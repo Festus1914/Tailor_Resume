@@ -171,7 +171,7 @@ Tailor the resume and produce the cover letter now, using the submit_tailored_re
           // Static across every request, so caching it means only the first
           // call in a ~5-min window pays full input price for these tokens;
           // every call after that pays roughly 10% of that for this block.
-          cache_control: { type: "ephemeral" },
+          
         },
       ],
       messages: [{ role: "user", content: userContent }],
