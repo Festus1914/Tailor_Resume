@@ -24,9 +24,9 @@ WORK EXPERIENCE
 [Job Title], [Company]
 [Start Date] - [End Date or Present] | [Location]
 [One-sentence company/mission description, if present in the original]
-• [bullet tailored to the job description — wrap 1-3 of the most JD-relevant terms per bullet in **double asterisks**, e.g. "Built **RAG pipelines** using **Pinecone** and **FAISS** to power semantic search."]
-• [bullet]
-• [bullet]
+- [bullet tailored to the job description — wrap 1-3 of the most JD-relevant terms per bullet in **double asterisks**, e.g. "Built **RAG pipelines** using **Pinecone** and **FAISS** to power semantic search."]
+- [bullet]
+- [bullet]
 (blank line between each job entry, most recent first)
 (blank line)
 SKILLS
@@ -160,8 +160,20 @@ Tailor the resume and produce the cover letter now, using the submit_tailored_re
 
     const response = await anthropic.messages.create({
       model: MODEL,
+      // Cap left at 8000 on purpose — you're only ever billed for tokens
+      // actually generated, so this doesn't add cost. Lowering it below what
+      // a long, multi-page resume needs would just truncate output.
       max_tokens: 8000,
-      system: SYSTEM_PROMPT,
+      system: [
+        {
+          type: "text",
+          text: SYSTEM_PROMPT,
+          // Static across every request, so caching it means only the first
+          // call in a ~5-min window pays full input price for these tokens;
+          // every call after that pays roughly 10% of that for this block.
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       messages: [{ role: "user", content: userContent }],
       tools: [
         {

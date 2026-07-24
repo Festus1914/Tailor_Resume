@@ -299,7 +299,7 @@ function ResumeDoc({ content }: { content: string }) {
           }
         })}
         <Text style={styles.buildMarker} fixed>
-          template-executive-v4
+         
         </Text>
       </Page>
     </Document>

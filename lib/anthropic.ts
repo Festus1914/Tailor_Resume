@@ -14,4 +14,4 @@ export function getAnthropicClient(): Anthropic {
   return client;
 }
 
-export const MODEL = "claude-sonnet-5";
+export const MODEL = "claude-haiku-4-5-20251001";
