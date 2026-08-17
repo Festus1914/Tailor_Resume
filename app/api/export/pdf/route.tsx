@@ -14,6 +14,8 @@ import {
   splitDateLine,
   splitContactLine,
 } from "@/lib/resumeParser";
+import { requireUser } from "@/lib/auth/guards";
+import { toErrorResponse } from "@/lib/api";
 
 export const runtime = "nodejs";
 
@@ -308,6 +310,12 @@ function ResumeDoc({ content }: { content: string }) {
 
 export async function POST(req: NextRequest) {
   try {
+    // Without this, the endpoint is a free document-rendering service for anyone
+    // who finds the URL. Phase 7 tightens it further: exports will take a resume
+    // id and load the content server-side after an ownership check, instead of
+    // rendering whatever body they are handed.
+    await requireUser();
+
     const { content, title } = await req.json();
 
     if (!content || typeof content !== "string") {
@@ -323,11 +331,7 @@ export async function POST(req: NextRequest) {
         "Content-Disposition": `attachment; filename="${title || "document"}.pdf"`,
       },
     });
-  } catch (err: any) {
-    console.error("PDF export error:", err);
-    return NextResponse.json(
-      { error: err?.message ?? "Failed to generate PDF" },
-      { status: 500 }
-    );
+  } catch (err) {
+    return toErrorResponse(err);
   }
 }

@@ -15,6 +15,8 @@ import {
   splitDateLine,
   splitContactLine,
 } from "@/lib/resumeParser";
+import { requireUser } from "@/lib/auth/guards";
+import { toErrorResponse } from "@/lib/api";
 
 export const runtime = "nodejs";
 
@@ -293,6 +295,9 @@ function buildMarkerParagraph(): Paragraph {
 
 export async function POST(req: NextRequest) {
   try {
+    // See the note on the PDF route: authenticated now, id-based in Phase 7.
+    await requireUser();
+
     const { content, title } = await req.json();
 
     if (!content || typeof content !== "string") {
@@ -335,11 +340,7 @@ export async function POST(req: NextRequest) {
         "Content-Disposition": `attachment; filename="${title || "document"}.docx"`,
       },
     });
-  } catch (err: any) {
-    console.error("DOCX export error:", err);
-    return NextResponse.json(
-      { error: err?.message ?? "Failed to generate DOCX" },
-      { status: 500 }
-    );
+  } catch (err) {
+    return toErrorResponse(err);
   }
 }

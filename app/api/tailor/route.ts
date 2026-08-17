@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import type Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicClient, MODEL } from "@/lib/anthropic";
 import { TailorRequest, TailorResult } from "@/lib/types";
+import { requireUser } from "@/lib/auth/guards";
+import { toErrorResponse } from "@/lib/api";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -132,6 +134,10 @@ function toScoreSafe(value: unknown): number {
 
 export async function POST(req: NextRequest) {
   try {
+    // Tailoring spends API budget, so it requires an approved account. Middleware
+    // only checks that a cookie exists; this is the check that validates it.
+    await requireUser();
+
     const body = (await req.json()) as TailorRequest;
     const { resumeText, jobDescription, companyName, applicantName } = body;
 
@@ -207,11 +213,11 @@ Tailor the resume and produce the cover letter now, using the submit_tailored_re
     };
 
     return NextResponse.json(result);
-  } catch (err: any) {
-    console.error("Tailor API error:", err);
-    return NextResponse.json(
-      { error: err?.message ?? "Unknown error occurred." },
-      { status: 500 }
-    );
+  } catch (err) {
+    // Returns declared ApiErrors with their real status (401 for an
+    // unauthenticated call), and anything unexpected as a generic 500 with the
+    // detail logged server-side. Previously this echoed err.message straight to
+    // the client, which leaks internals on any unhandled failure.
+    return toErrorResponse(err);
   }
 }
