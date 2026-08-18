@@ -297,7 +297,9 @@ async function tailorResumeAsync(
     // Call Claude to tailor (with timeout)
     const client = getAnthropicClient();
 
-    const response = await Promise.race([
+    type MessageResponse = { content: Array<{ type: string; text?: string }> };
+
+    const response = (await Promise.race([
       client.messages.create({
         model: MODEL,
         max_tokens: 2000,
@@ -308,11 +310,11 @@ async function tailorResumeAsync(
             content: `Master Resume:\n${resumeText}\n\nJob Description:\n${jobDescription}\n\nTailor this resume for this job.`,
           },
         ],
-      }) as Promise<{ content: Array<{ type: string; text?: string }> }>,
+      }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Timeout")), 15000)
       ),
-    ]);
+    ])) as MessageResponse;
 
     const tailoredText =
       response.content[0]?.type === "text" && response.content[0].text
