@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2, AlertCircle } from "lucide-react";
+import { Download, Loader2, AlertCircle, Check } from "lucide-react";
 import type { ITailoredResume } from "@/lib/models";
 import type { IJob } from "@/lib/models";
 
@@ -17,6 +17,8 @@ export default function TailorResultsView({
   job,
 }: TailorResultsViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>("resume");
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
 
   const matchScore = tailored.analysis?.matchScore || 0;
   const matchColor =
@@ -25,6 +27,120 @@ export default function TailorResultsView({
       : matchScore >= 60
         ? "text-[#8a6d1f]"
         : "text-[#b3452c]";
+
+  const resumeContent = convertResumeToText();
+  const coverLetterContent = tailored.current?.coverLetter || "";
+
+  function convertResumeToText(): string {
+    const resume = tailored.current?.resume;
+    if (!resume) return "";
+
+    const lines: string[] = [];
+
+    if (resume.header?.fullName) lines.push(resume.header.fullName);
+    if (resume.header?.headline) lines.push(resume.header.headline);
+    if (
+      resume.header?.email ||
+      resume.header?.phone ||
+      resume.header?.location
+    ) {
+      lines.push(
+        [resume.header.email, resume.header.phone, resume.header.location]
+          .filter(Boolean)
+          .join(" | ")
+      );
+    }
+
+    if (resume.summary) {
+      lines.push("", "PROFESSIONAL SUMMARY", resume.summary);
+    }
+
+    if (resume.experience?.length > 0) {
+      lines.push("", "EXPERIENCE");
+      resume.experience.forEach((exp: any) => {
+        lines.push(exp.title + ", " + exp.company);
+        lines.push(
+          `${exp.startDate} - ${exp.isCurrent ? "Present" : exp.endDate}`
+        );
+        exp.bullets?.forEach((bullet: string) => {
+          lines.push("• " + bullet);
+        });
+        lines.push("");
+      });
+    }
+
+    if (resume.skills?.length > 0) {
+      lines.push("", "SKILLS");
+      resume.skills.forEach((group: any) => {
+        lines.push(`${group.label}: ${group.items?.join(", ")}`);
+      });
+    }
+
+    if (resume.education?.length > 0) {
+      lines.push("", "EDUCATION");
+      resume.education.forEach((edu: any) => {
+        lines.push(`${edu.degree} in ${edu.field}`);
+        lines.push(edu.school);
+        if (edu.location) lines.push(edu.location);
+        lines.push("");
+      });
+    }
+
+    return lines.join("\n");
+  }
+
+  async function downloadFile(format: "pdf" | "docx", content: string) {
+    if (!content || content.trim().length === 0) {
+      alert("No content to download");
+      return;
+    }
+
+    setDownloading(format);
+
+    try {
+      const res = await fetch(`/api/export/${format}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: content.trim(),
+          title: `${job.title} - ${job.company}`,
+        }),
+      });
+
+      if (!res.ok) {
+        let errorMessage = `HTTP ${res.status}`;
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          try {
+            const text = await res.text();
+            if (text) errorMessage = text.substring(0, 100);
+          } catch {}
+        }
+        throw new Error(errorMessage);
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tailored-${activeTab === "coverLetter" ? "cover-letter" : "resume"}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 2000);
+    } catch (e) {
+      alert(
+        `Download failed: ${e instanceof Error ? e.message : "Unknown error"}`
+      );
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -45,10 +161,57 @@ export default function TailorResultsView({
           </div>
         </div>
 
-        <button className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors flex items-center gap-2">
-          <Download size={14} />
-          Export as PDF
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() =>
+              downloadFile(
+                "pdf",
+                activeTab === "coverLetter" ? coverLetterContent : resumeContent
+              )
+            }
+            disabled={downloading !== null}
+            className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            {downloading === "pdf" ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Exporting...
+              </>
+            ) : downloadSuccess ? (
+              <>
+                <Check size={14} />
+                Downloaded
+              </>
+            ) : (
+              <>
+                <Download size={14} />
+                PDF
+              </>
+            )}
+          </button>
+          <button
+            onClick={() =>
+              downloadFile(
+                "docx",
+                activeTab === "coverLetter" ? coverLetterContent : resumeContent
+              )
+            }
+            disabled={downloading !== null}
+            className="px-4 py-2 text-sm rounded-lg border border-black/10 text-black hover:bg-black/5 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            {downloading === "docx" ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download size={14} />
+                DOCX
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}

@@ -205,13 +205,26 @@ export const POST = route(async (req: NextRequest) => {
     );
   }
 
-  // Extract job data from HTML
+  // Extract job data from HTML with LLM fallback for accuracy
   const extracted = await extractJobData(url, html, {
     title,
     company,
     location,
     employmentType,
     descriptionText,
+  }).catch((error) => {
+    console.error("Job extraction error:", error);
+    // Return safe fallback on extraction error
+    return {
+      title: title || "",
+      company: company || "",
+      location: location || "",
+      employmentType: employmentType || "",
+      descriptionText: descriptionText || "",
+      requirements: [],
+      source: "manual" as const,
+      extractionConfidence: 0.3,
+    };
   });
 
   // Create the job record

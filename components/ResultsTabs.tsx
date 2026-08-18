@@ -37,34 +37,72 @@ export default function ResultsTabs({
     setTimeout(() => setCopied(false), 1500);
   }
 
-  async function handleDownload(format: "pdf" | "docx") {
+  async function downloadFile(
+    format: "pdf" | "docx",
+    filename: string,
+    content: string,
+    title: string
+  ) {
+    if (!content || content.trim().length === 0) {
+      throw new Error(
+        `No ${tab === "cover" ? "cover letter" : "resume"} content to download. Please generate or edit it first.`
+      );
+    }
+
+    const res = await fetch(`/api/export/${format}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: content.trim(),
+        title: title || "document",
+      }),
+    });
+
+    if (!res.ok) {
+      let errorMessage = `HTTP ${res.status}`;
+      try {
+        const errorData = await res.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        try {
+          const text = await res.text();
+          if (text) errorMessage = text.substring(0, 100);
+        } catch {}
+      }
+      throw new Error(`Failed to export as ${format.toUpperCase()}: ${errorMessage}`);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${filename}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleDownload(format: "pdf" | "docx" | "all") {
     const isCover = tab === "cover";
-    const key = `${tab}-${format}`;
-    setDownloading(key);
+    const filename = isCover ? "cover-letter" : "tailored-resume";
+    const title = isCover
+      ? `Cover Letter${companyName ? " - " + companyName : ""}`
+      : `Resume${companyName ? " - " + companyName : ""}`;
+
+    setDownloading(format === "all" ? "all" : `${tab}-${format}`);
     try {
-      const res = await fetch(`/api/export/${format}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: activeText,
-          name: isCover ? undefined : applicantName,
-          title: isCover
-            ? `Cover Letter${companyName ? " - " + companyName : ""}`
-            : `Resume${companyName ? " - " + companyName : ""}`,
-        }),
-      });
-      if (!res.ok) throw new Error("Export failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${isCover ? "cover-letter" : "tailored-resume"}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      if (format === "all") {
+        await downloadFile("pdf", filename, activeText, title);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await downloadFile("docx", filename, activeText, title);
+      } else {
+        await downloadFile(format, filename, activeText, title);
+      }
     } catch (e) {
-      alert("Sorry, that download failed. Please try again.");
+      const errorMessage =
+        e instanceof Error ? e.message : "Unknown error occurred";
+      alert(`Download failed: ${errorMessage}`);
     } finally {
       setDownloading(null);
     }
@@ -134,6 +172,14 @@ export default function ResultsTabs({
                 >
                   <Download size={13} />
                   {downloading === `${tab}-pdf` ? "..." : ".pdf"}
+                </button>
+                <button
+                  onClick={() => handleDownload("all")}
+                  disabled={downloading !== null}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-black/80 text-white hover:bg-black transition-colors disabled:opacity-50"
+                >
+                  <Download size={13} />
+                  {downloading === "all" ? "..." : "Both"}
                 </button>
               </div>
             </div>

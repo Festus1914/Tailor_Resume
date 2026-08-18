@@ -1,10 +1,12 @@
 import type { IJob } from "@/lib/models";
+import Anthropic from "@anthropic-ai/sdk";
 
 /**
  * Job data extraction from URLs and HTML.
  *
  * Supports:
- * - JSON-LD structured data (highest confidence)
+ * - JSON-LD structured data (highest confidence, fastest)
+ * - Claude LLM extraction (fallback, handles any format)
  * - Manual entry fallback
  * - Error handling for protected/unsupported sites
  */
@@ -19,6 +21,8 @@ export interface ExtractedJob {
   source: "jsonld" | "llm" | "manual";
   extractionConfidence: number;
 }
+
+const client = new Anthropic();
 
 /**
  * Normalizes a URL for deduplication:
@@ -169,24 +173,120 @@ export function extractRequirements(text: string): string[] {
 }
 
 /**
+ * Extracts job data using Claude LLM.
+ *
+ * Fast, accurate extraction for any job board format.
+ * Parses unstructured HTML and description text intelligently.
+ */
+async function extractJobWithLLM(
+  html: string,
+  descriptionText?: string
+): Promise<ExtractedJob | null> {
+  try {
+    // Extract visible text from HTML for LLM processing
+    const cleanText = extractVisibleText(html).slice(0, 8000); // Limit to ~2000 tokens
+
+    const prompt = `Extract job posting details from this HTML/text. Return JSON only.
+
+HTML/Text:
+${cleanText}
+
+${descriptionText ? `\nJob Description: ${descriptionText.slice(0, 2000)}` : ""}
+
+Return ONLY valid JSON (no markdown, no extra text) with this structure:
+{
+  "title": "exact job title",
+  "company": "company name",
+  "location": "location or 'remote'",
+  "employmentType": "Full-time|Part-time|Contract|etc or empty string",
+  "descriptionText": "full job description (first 500 chars)",
+  "requirements": ["requirement 1", "requirement 2"]
+}`;
+
+    const message = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 500,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+    });
+
+    const responseText =
+      message.content[0].type === "text" ? message.content[0].text : "";
+
+    // Parse the JSON response
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn("No JSON found in LLM response");
+      return null;
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    return {
+      title: String(parsed.title || "").trim(),
+      company: String(parsed.company || "").trim(),
+      location: String(parsed.location || "").trim(),
+      employmentType: String(parsed.employmentType || "").trim(),
+      descriptionText: String(parsed.descriptionText || "").trim(),
+      requirements: Array.isArray(parsed.requirements)
+        ? parsed.requirements
+            .map((r: unknown) => String(r).trim())
+            .filter((r: string) => r.length > 0)
+        : [],
+      source: "llm",
+      extractionConfidence: 0.85,
+    };
+  } catch (error) {
+    console.error("LLM extraction failed:", error);
+    return null;
+  }
+}
+
+/**
+ * Extracts visible text from HTML (removes scripts, styles, etc).
+ */
+function extractVisibleText(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Determines the best extraction method based on available data.
  *
- * Attempts JSON-LD first (highest confidence), then falls back to
- * manual entry placeholder.
+ * Attempts JSON-LD first (fastest, highest confidence),
+ * then falls back to Claude LLM (accurate, works anywhere),
+ * finally manual entry if provided.
  */
 export async function extractJobData(
   url: string,
   html: string,
   manual?: Partial<ExtractedJob>
 ): Promise<ExtractedJob> {
-  // Try JSON-LD extraction
+  // Try JSON-LD extraction (fastest)
   const jsonLd = extractJsonLd(html);
   if (jsonLd) {
     return jsonLd;
   }
 
+  // Try Claude LLM extraction (accurate fallback)
+  const llmExtraction = await extractJobWithLLM(
+    html,
+    manual?.descriptionText
+  );
+  if (llmExtraction && llmExtraction.title && llmExtraction.company) {
+    return llmExtraction;
+  }
+
   // Fallback to manual data if provided
-  if (manual) {
+  if (manual && (manual.title || manual.company)) {
     return {
       title: manual.title || "",
       company: manual.company || "",
