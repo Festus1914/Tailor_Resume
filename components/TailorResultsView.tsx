@@ -29,120 +29,148 @@ export default function TailorResultsView({
         : "text-[#b3452c]";
 
   function convertResumeToText(): string {
-    // Try current first (user-edited), then generated, then fallback to profile snapshot
-    let resume = tailored.current?.resume || tailored.generated?.resume;
+    console.log("[CONVERT] Starting conversion, tailored object:", {
+      hasCurrent: !!tailored.current,
+      hasGenerated: !!tailored.generated,
+      hasProfileSnapshot: !!tailored.profileSnapshot,
+      currentResumeKeys: tailored.current?.resume ? Object.keys(tailored.current.resume).length : 0,
+      generatedResumeKeys: tailored.generated?.resume ? Object.keys(tailored.generated.resume).length : 0,
+      profileSnapshotKeys: tailored.profileSnapshot ? Object.keys(tailored.profileSnapshot).length : 0,
+    });
 
-    // If no tailored resume, use the master resume as fallback
+    // Try current first (user-edited), then generated
+    let resume = tailored.current?.resume;
+    let source = "current";
+
     if (!resume || (typeof resume === 'object' && Object.keys(resume).length === 0)) {
-      console.warn("Resume is empty or missing, using profile snapshot as fallback", {
-        hasCurrent: !!tailored.current,
-        hasGenerated: !!tailored.generated,
-        currentResume: !!tailored.current?.resume,
-        generatedResume: !!tailored.generated?.resume,
-        hasProfileSnapshot: !!tailored.profileSnapshot,
-      });
-      resume = tailored.profileSnapshot;
+      console.log("[CONVERT] Current resume empty, trying generated");
+      resume = tailored.generated?.resume;
+      source = "generated";
     }
 
-    if (!resume) {
-      console.error("No resume data available for export - profileSnapshot is also missing");
+    if (!resume || (typeof resume === 'object' && Object.keys(resume).length === 0)) {
+      console.log("[CONVERT] Generated resume empty, trying profileSnapshot");
+      resume = tailored.profileSnapshot;
+      source = "profileSnapshot";
+    }
+
+    if (!resume || (typeof resume === 'object' && Object.keys(resume).length === 0)) {
+      console.error("[CONVERT] All resume sources are empty/missing:", {
+        hasCurrent: !!tailored.current,
+        hasGenerated: !!tailored.generated,
+        hasProfileSnapshot: !!tailored.profileSnapshot,
+        currentEmpty: tailored.current?.resume ? Object.keys(tailored.current.resume).length === 0 : "missing",
+        generatedEmpty: tailored.generated?.resume ? Object.keys(tailored.generated.resume).length === 0 : "missing",
+        profileEmpty: tailored.profileSnapshot ? Object.keys(tailored.profileSnapshot).length === 0 : "missing",
+      });
       return "";
     }
 
-    console.log("Using resume source:",
-      tailored.current?.resume ? "current" :
-      tailored.generated?.resume ? "generated" :
-      "profileSnapshot (fallback)"
-    );
+    console.log("[CONVERT] Using resume source:", source);
 
     const lines: string[] = [];
 
-    console.log("[CONVERT] Resume object structure:", {
-      hasHeader: !!resume.header,
-      hasSummary: !!resume.summary,
-      experienceCount: resume.experience?.length || 0,
-      skillsCount: resume.skills?.length || 0,
-      educationCount: resume.education?.length || 0,
-    });
+    // Safely extract resume data with better error handling
+    try {
+      const header = resume.header || {};
+      const hasHeader = header.fullName || header.headline || header.email || header.phone || header.location;
 
-    // Header section
-    if (resume.header?.fullName) {
-      lines.push(resume.header.fullName.toUpperCase());
-    }
-    if (resume.header?.headline) {
-      lines.push(resume.header.headline);
-    }
-
-    // Contact info
-    const contactInfo = [
-      resume.header?.email,
-      resume.header?.phone,
-      resume.header?.location,
-    ]
-      .filter(Boolean)
-      .join(" | ");
-    if (contactInfo) {
-      lines.push(contactInfo);
-    }
-
-    // Professional summary
-    if (resume.summary) {
-      lines.push("", "PROFESSIONAL SUMMARY", resume.summary);
-    }
-
-    // Experience
-    if (resume.experience && resume.experience.length > 0) {
-      lines.push("", "EXPERIENCE");
-      resume.experience.forEach((exp: any) => {
-        if (exp.title || exp.company) {
-          lines.push(`${exp.title || "Position"}, ${exp.company || "Company"}`);
-        }
-        if (exp.startDate || exp.endDate) {
-          const endDate = exp.isCurrent ? "Present" : exp.endDate || "Current";
-          lines.push(`${exp.startDate || "Start"} - ${endDate}`);
-        }
-        if (exp.bullets && Array.isArray(exp.bullets)) {
-          exp.bullets.forEach((bullet: any) => {
-            if (bullet) lines.push(`• ${bullet}`);
-          });
-        }
-        lines.push("");
+      console.log("[CONVERT] Resume structure:", {
+        source,
+        hasHeader,
+        hasSummary: !!resume.summary,
+        experienceCount: Array.isArray(resume.experience) ? resume.experience.length : 0,
+        skillsCount: Array.isArray(resume.skills) ? resume.skills.length : 0,
+        educationCount: Array.isArray(resume.education) ? resume.education.length : 0,
       });
-    }
 
-    // Skills
-    if (resume.skills && resume.skills.length > 0) {
-      lines.push("", "SKILLS");
-      resume.skills.forEach((group: any) => {
-        const skillsStr = Array.isArray(group.items)
-          ? group.items.join(", ")
-          : String(group.items || "");
-        if (skillsStr) {
-          lines.push(`${group.label || "Skills"}: ${skillsStr}`);
-        }
-      });
-    }
+      // Header section
+      if (header.fullName) {
+        lines.push(header.fullName.toUpperCase());
+      }
+      if (header.headline) {
+        lines.push(header.headline);
+      }
 
-    // Education
-    if (resume.education && resume.education.length > 0) {
-      lines.push("", "EDUCATION");
-      resume.education.forEach((edu: any) => {
-        if (edu.degree && edu.field) {
-          lines.push(`${edu.degree} in ${edu.field}`);
-        }
-        if (edu.school) {
-          lines.push(edu.school);
-        }
-        if (edu.location) {
-          lines.push(edu.location);
-        }
-        lines.push("");
-      });
-    }
+      // Contact info
+      const contactInfo = [
+        header.email,
+        header.phone,
+        header.location,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      if (contactInfo) {
+        lines.push(contactInfo);
+      }
 
-    const result = lines.join("\n").trim();
-    console.log("[CONVERT] Resume text length:", result.length, "characters");
-    return result;
+      // Professional summary
+      if (resume.summary) {
+        lines.push("", "PROFESSIONAL SUMMARY", resume.summary);
+      }
+
+      // Experience
+      if (Array.isArray(resume.experience) && resume.experience.length > 0) {
+        lines.push("", "EXPERIENCE");
+        resume.experience.forEach((exp: any) => {
+          if (exp.title || exp.company) {
+            lines.push(`${exp.title || "Position"}, ${exp.company || "Company"}`);
+          }
+          if (exp.startDate || exp.endDate) {
+            const endDate = exp.isCurrent ? "Present" : exp.endDate || "Current";
+            lines.push(`${exp.startDate || "Start"} - ${endDate}`);
+          }
+          if (exp.bullets && Array.isArray(exp.bullets)) {
+            exp.bullets.forEach((bullet: any) => {
+              if (bullet) lines.push(`• ${bullet}`);
+            });
+          }
+          lines.push("");
+        });
+      }
+
+      // Skills
+      if (Array.isArray(resume.skills) && resume.skills.length > 0) {
+        lines.push("", "SKILLS");
+        resume.skills.forEach((group: any) => {
+          const skillsStr = Array.isArray(group.items)
+            ? group.items.join(", ")
+            : String(group.items || "");
+          if (skillsStr) {
+            lines.push(`${group.label || "Skills"}: ${skillsStr}`);
+          }
+        });
+      }
+
+      // Education
+      if (Array.isArray(resume.education) && resume.education.length > 0) {
+        lines.push("", "EDUCATION");
+        resume.education.forEach((edu: any) => {
+          if (edu.degree && edu.field) {
+            lines.push(`${edu.degree} in ${edu.field}`);
+          }
+          if (edu.school) {
+            lines.push(edu.school);
+          }
+          if (edu.location) {
+            lines.push(edu.location);
+          }
+          lines.push("");
+        });
+      }
+
+      const result = lines.join("\n").trim();
+      console.log("[CONVERT] Final result length:", result.length, "characters");
+
+      if (result.length === 0) {
+        console.warn("[CONVERT] Result is empty even after trying all sections");
+      }
+
+      return result;
+    } catch (error) {
+      console.error("[CONVERT] Error during conversion:", error);
+      return "";
+    }
   }
 
   const resumeContent = convertResumeToText();
