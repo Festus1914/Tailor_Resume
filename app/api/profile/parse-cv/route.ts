@@ -237,9 +237,50 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[PARSE_CV] Error:", error instanceof Error ? error.message : String(error));
     console.error("[PARSE_CV] Full error:", error);
+
+    // Always return proper JSON error response
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
     if (error instanceof SyntaxError) {
-      return toErrorResponse(badRequest("Invalid resume format or structure"));
+      return NextResponse.json(
+        { error: "Invalid resume format or structure" },
+        { status: 400 }
+      );
     }
-    return toErrorResponse(error);
+
+    // Return more specific error based on message
+    if (errorMessage.includes("DOMMatrix")) {
+      return NextResponse.json(
+        { error: "PDF parsing failed: Invalid PDF file. Please ensure the PDF is readable." },
+        { status: 400 }
+      );
+    }
+
+    if (errorMessage.includes("Could not extract JSON")) {
+      return NextResponse.json(
+        { error: "Failed to parse resume. Please ensure the file contains valid resume content." },
+        { status: 400 }
+      );
+    }
+
+    if (errorMessage.includes("Unsupported file type")) {
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 400 }
+      );
+    }
+
+    if (errorMessage.includes("too short")) {
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 400 }
+      );
+    }
+
+    // Generic error
+    return NextResponse.json(
+      { error: errorMessage || "Failed to parse resume" },
+      { status: error instanceof Error && "status" in error ? (error as any).status : 500 }
+    );
   }
 }

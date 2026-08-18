@@ -42,21 +42,40 @@ export default function ProfileEditor({ initialProfile }: ProfileEditorProps) {
       const formData = new FormData();
       formData.append("file", file);
 
+      console.log("[UPLOAD] Starting file upload:", { name: file.name, type: file.type, size: file.size });
+
       const res = await fetch("/api/profile/parse-cv", {
         method: "POST",
         body: formData,
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Failed to parse resume");
+      console.log("[UPLOAD] Response status:", res.status, res.statusText);
+
+      let data;
+      try {
+        data = await res.json();
+        console.log("[UPLOAD] Response data:", data);
+      } catch (parseError) {
+        console.error("[UPLOAD] Failed to parse response as JSON:", parseError);
+        const text = await res.text();
+        console.error("[UPLOAD] Response text:", text);
+        throw new Error(`Server error (${res.status}): ${text.substring(0, 200)}`);
       }
 
+      if (!res.ok) {
+        const errorMsg = data?.error ?? data?.message ?? `Failed to parse resume (${res.status})`;
+        console.error("[UPLOAD] Error response:", errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      console.log("[UPLOAD] Success! Setting resume data");
       setResume(data.data);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to parse resume");
+      const errorMessage = e instanceof Error ? e.message : "Failed to parse resume";
+      console.error("[UPLOAD] Error:", errorMessage);
+      setError(errorMessage);
     } finally {
       setParsing(false);
       event.target.value = "";
