@@ -204,62 +204,78 @@ export default function TailorResultsView({
     }
   }
 
-  // Extract resume content with multiple fallback strategies
-  function getResumeContent(): string {
+  // Calculate content when download button is clicked, not at render time
+  const getResumeContent = (): string => {
+    console.log("[GET_RESUME] Calculating resume content for download");
+
     // First try the structured conversion
     let content = convertResumeToText();
 
     if (content && content.length > 0) {
-      console.log("[RESUME_CONTENT] Using structured conversion, length:", content.length);
+      console.log("[GET_RESUME] Using structured conversion, length:", content.length);
       return content;
     }
 
-    console.warn("[RESUME_CONTENT] Structured conversion returned empty, trying fallback methods");
+    console.warn("[GET_RESUME] Structured conversion returned empty, trying fallback methods");
 
     // Fallback 1: Try to extract from current resume object directly
     if (tailored.current?.resume) {
-      console.log("[RESUME_CONTENT] Trying raw current resume JSON");
+      console.log("[GET_RESUME] Trying raw current resume JSON");
       content = JSON.stringify(tailored.current.resume, null, 2);
       if (content.length > 10) {
+        console.log("[GET_RESUME] Using current resume JSON, length:", content.length);
         return content;
       }
     }
 
     // Fallback 2: Try generated resume
     if (tailored.generated?.resume) {
-      console.log("[RESUME_CONTENT] Trying raw generated resume JSON");
+      console.log("[GET_RESUME] Trying raw generated resume JSON");
       content = JSON.stringify(tailored.generated.resume, null, 2);
       if (content.length > 10) {
+        console.log("[GET_RESUME] Using generated resume JSON, length:", content.length);
         return content;
       }
     }
 
     // Fallback 3: Try profileSnapshot
     if (tailored.profileSnapshot) {
-      console.log("[RESUME_CONTENT] Trying raw profileSnapshot JSON");
+      console.log("[GET_RESUME] Trying raw profileSnapshot JSON");
       content = JSON.stringify(tailored.profileSnapshot, null, 2);
       if (content.length > 10) {
+        console.log("[GET_RESUME] Using profileSnapshot JSON, length:", content.length);
         return content;
       }
     }
 
     // Fallback 4: At least return something with the job info
-    console.error("[RESUME_CONTENT] All methods failed, creating emergency resume");
-    return `Resume for ${job.title} at ${job.company}\n\n${job.descriptionText || "No description available"}`;
-  }
+    const emergencyResume = `Resume for ${job.title} at ${job.company}\n\n${job.descriptionText || "No description available"}`;
+    console.error("[GET_RESUME] All methods failed, using emergency resume, length:", emergencyResume.length);
+    return emergencyResume;
+  };
 
-  const resumeContent = getResumeContent();
-  const coverLetterContent = tailored.current?.coverLetter || "";
+  const getCoverLetterContent = (): string => {
+    return tailored.current?.coverLetter || tailored.generated?.coverLetter || "";
+  };
 
-  async function downloadFile(format: "pdf" | "docx", content: string) {
+  async function downloadFile(format: "pdf" | "docx") {
+    // Get content at download time, not at render time
+    let content = "";
+    if (activeTab === "coverLetter") {
+      content = getCoverLetterContent();
+    } else {
+      content = getResumeContent();
+    }
+
     console.log(`[EXPORT] Starting ${format} export, content length:`, content?.length || 0);
+    console.log(`[EXPORT] Tab: ${activeTab}, content preview:`, content.substring(0, 100));
 
     if (!content || content.trim().length === 0) {
       const msg = activeTab === "coverLetter"
         ? "No cover letter available. Please make sure it was generated."
         : "No resume content available. Please refresh the page and try again.";
       alert(msg);
-      console.warn(`[EXPORT] Empty content for ${format}:`, msg);
+      console.error(`[EXPORT] Empty content for ${format}:`, msg);
       console.log("[EXPORT] Debug info:", {
         currentResume: !!tailored.current?.resume,
         generatedResume: !!tailored.generated?.resume,
@@ -348,12 +364,7 @@ export default function TailorResultsView({
 
         <div className="flex gap-2">
           <button
-            onClick={() =>
-              downloadFile(
-                "pdf",
-                activeTab === "coverLetter" ? coverLetterContent : resumeContent
-              )
-            }
+            onClick={() => downloadFile("pdf")}
             disabled={downloading !== null}
             className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors flex items-center gap-2 disabled:opacity-50"
           >
@@ -375,12 +386,7 @@ export default function TailorResultsView({
             )}
           </button>
           <button
-            onClick={() =>
-              downloadFile(
-                "docx",
-                activeTab === "coverLetter" ? coverLetterContent : resumeContent
-              )
-            }
+            onClick={() => downloadFile("docx")}
             disabled={downloading !== null}
             className="px-4 py-2 text-sm rounded-lg border border-black/10 text-black hover:bg-black/5 transition-colors flex items-center gap-2 disabled:opacity-50"
           >
