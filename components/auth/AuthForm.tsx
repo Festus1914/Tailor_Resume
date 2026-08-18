@@ -60,7 +60,33 @@ export default function AuthForm({ mode, nextPath }: AuthFormProps) {
           router.push("/pending");
           return;
         }
-        setError(data.error ?? "Something went wrong. Please try again.");
+
+        // Provide more specific error messages for common issues
+        let errorMessage = data.error ?? "Something went wrong. Please try again.";
+
+        if (data.code === "invalid_credentials") {
+          errorMessage = mode === "login"
+            ? "Email or password is incorrect."
+            : "An account with that email already exists.";
+        } else if (data.code === "account_rejected") {
+          errorMessage = "Your account request was not approved.";
+        } else if (data.code === "account_disabled") {
+          errorMessage = "Your account has been disabled.";
+        } else if (res.status === 429) {
+          errorMessage = data.error ?? "Too many login attempts. Please try again later.";
+        } else if (res.status === 500) {
+          errorMessage = "Server error. Please try again in a few moments.";
+        }
+
+        setError(errorMessage);
+
+        // Log to console for debugging
+        console.error("Auth error:", {
+          status: res.status,
+          code: data.code,
+          error: data.error,
+          mode,
+        });
         return;
       }
 
