@@ -296,11 +296,12 @@ async function tailorResumeAsync(
 
     // Call Claude to tailor (with timeout)
     const client = getAnthropicClient();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    type MessageResponse = { content: Array<{ type: string; text?: string }> };
-
-    const response = (await Promise.race([
-      client.messages.create({
+    let tailoredText = resumeText;
+    try {
+      const response = await client.messages.create({
         model: MODEL,
         max_tokens: 2000,
         system: `You are an expert resume writer. Tailor the resume to match the job description. Return ONLY the tailored resume text, no explanation.`,
@@ -310,16 +311,25 @@ async function tailorResumeAsync(
             content: `Master Resume:\n${resumeText}\n\nJob Description:\n${jobDescription}\n\nTailor this resume for this job.`,
           },
         ],
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 15000)
-      ),
-    ])) as MessageResponse;
+      });
 
-    const tailoredText =
-      response.content[0]?.type === "text" && response.content[0].text
-        ? response.content[0].text
-        : resumeText;
+      clearTimeout(timeoutId);
+
+      if (response.content && response.content.length > 0) {
+        const firstContent = response.content[0];
+        if (firstContent && "type" in firstContent && firstContent.type === "text" && "text" in firstContent) {
+          tailoredText = firstContent.text;
+        }
+      }
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        console.warn("Resume tailoring timeout for job", jobId);
+      } else {
+        console.error("Resume tailoring error:", error);
+      }
+      // Use original resume text as fallback
+    }
 
     // Parse tailored resume into structured format
     const tailoredDoc = parseTailoredResume(tailoredText, masterResume);
