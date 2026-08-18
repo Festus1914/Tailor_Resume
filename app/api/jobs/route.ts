@@ -8,8 +8,8 @@ import {
   validateUrl,
   normalizeUrl,
   extractDomain,
-  extractJobData,
 } from "@/lib/jobs/extractor";
+import { extractJobData as advancedExtractJobData } from "@/lib/jobs/advanced-extractor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -205,26 +205,38 @@ export const POST = route(async (req: NextRequest) => {
     );
   }
 
-  // Extract job data from HTML with LLM fallback for accuracy
-  const extracted = await extractJobData(url, html, {
-    title,
-    company,
-    location,
-    employmentType,
-    descriptionText,
-  }).catch((error) => {
-    console.error("Job extraction error:", error);
-    // Return safe fallback on extraction error
+  // Extract job data using advanced extraction pipeline
+  console.log("[JOBS] Starting advanced extraction for:", url);
+  const advancedData = await advancedExtractJobData(html).catch((error: unknown) => {
+    console.error("[JOBS] Advanced extraction error:", error);
     return {
-      title: title || "",
-      company: company || "",
-      location: location || "",
-      employmentType: employmentType || "",
-      descriptionText: descriptionText || "",
+      title: "Job Title",
+      company: "Company",
+      location: "Location",
+      employmentType: "Full-time",
+      description: html.substring(0, 2000),
       requirements: [],
-      source: "manual" as const,
-      extractionConfidence: 0.3,
+      confidence: 0.2,
+      method: "basic" as const,
     };
+  });
+
+  const extracted = {
+    title: advancedData.title || title || "Job Title",
+    company: advancedData.company || company || "Company",
+    location: advancedData.location || location || "Location",
+    employmentType: advancedData.employmentType || employmentType || "Full-time",
+    descriptionText: advancedData.description || descriptionText || "",
+    requirements: advancedData.requirements || [],
+    source: advancedData.method as "jsonld" | "llm" | "manual",
+    extractionConfidence: advancedData.confidence,
+  };
+
+  console.log("[JOBS] Extraction complete:", {
+    method: advancedData.method,
+    confidence: advancedData.confidence,
+    title: extracted.title,
+    company: extracted.company,
   });
 
   // Create the job record

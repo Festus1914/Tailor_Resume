@@ -211,12 +211,41 @@ Please tailor the resume to this job posting and generate a professional cover l
     // Extract JSON from the response
     const responseText =
       response.content[0].type === "text" ? response.content[0].text : "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON found in response");
 
-    parsed = JSON.parse(jsonMatch[0]);
+    if (!responseText?.trim()) {
+      throw new Error("Empty response from Claude");
+    }
+
+    console.log("[TAILOR] Claude response length:", responseText.length);
+
+    // Try to find JSON block
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error(`No JSON found in response. Response preview: ${responseText.substring(0, 200)}`);
+    }
+
+    const jsonStr = jsonMatch[0];
+    parsed = JSON.parse(jsonStr);
+
+    // Validate that required fields exist
+    if (!parsed.resume || typeof parsed.resume !== "object") {
+      throw new Error("Invalid resume structure in response");
+    }
+
+    // Ensure resume has the expected structure with defaults
+    if (!parsed.resume.header) {
+      parsed.resume.header = { fullName: "", headline: "", email: "", phone: "", location: "", links: [] };
+    }
+    if (!parsed.resume.experience) parsed.resume.experience = [];
+    if (!parsed.resume.skills) parsed.resume.skills = [];
+    if (!parsed.resume.education) parsed.resume.education = [];
+    if (!parsed.resume.certifications) parsed.resume.certifications = [];
+    if (!parsed.resume.projects) parsed.resume.projects = [];
+
+    console.log("[TAILOR] Successfully parsed Claude response");
   } catch (e) {
-    // Fallback if parsing fails
+    console.error("[TAILOR] Parse error:", e);
+    // Fallback if parsing fails - use master resume as base
     parsed = {
       resume: masterResume,
       coverLetter: "",
