@@ -92,7 +92,7 @@ async function extractTextFromFile(file: File): Promise<string> {
     // PDF file
     try {
       // @ts-ignore - dynamic require
-      const pdfParse = require("pdf-parse/lib/pdf.js");
+      const pdfParse = require("pdf-parse");
       const data = await pdfParse(Buffer.from(buffer));
       return data.text.trim();
     } catch (e) {
