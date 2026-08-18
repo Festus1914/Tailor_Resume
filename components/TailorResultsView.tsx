@@ -29,11 +29,20 @@ export default function TailorResultsView({
         : "text-[#b3452c]";
 
   function convertResumeToText(): string {
-    const resume = tailored.current?.resume;
+    // Try current first (user-edited), then fall back to generated
+    const resume = tailored.current?.resume || tailored.generated?.resume;
+
     if (!resume) {
-      console.warn("No resume data available for export");
+      console.warn("No resume data available for export", {
+        hasCurrent: !!tailored.current,
+        hasGenerated: !!tailored.generated,
+        currentResume: !!tailored.current?.resume,
+        generatedResume: !!tailored.generated?.resume,
+      });
       return "";
     }
+
+    console.log("Using resume:", tailored.current?.resume ? "current" : "generated");
 
     const lines: string[] = [];
 
@@ -126,9 +135,15 @@ export default function TailorResultsView({
     if (!content || content.trim().length === 0) {
       const msg = activeTab === "coverLetter"
         ? "No cover letter available. Please make sure it was generated."
-        : "No resume content available. Please make sure the resume was tailored first.";
+        : "No resume content available. Please refresh the page and try again.";
       alert(msg);
       console.warn(`[EXPORT] Empty content for ${format}:`, msg);
+      console.log("[EXPORT] Debug info:", {
+        currentResume: !!tailored.current?.resume,
+        generatedResume: !!tailored.generated?.resume,
+        profileSnapshot: !!tailored.profileSnapshot,
+        activeTab,
+      });
       return;
     }
 
