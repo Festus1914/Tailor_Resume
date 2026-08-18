@@ -118,7 +118,7 @@ export default function ProfileEditor({ initialProfile }: ProfileEditorProps) {
               Import from CV
             </h2>
             <p className="text-sm text-black/50">
-              Upload your resume (PDF or TXT) to auto-populate all fields
+              Upload your resume to auto-populate all fields
             </p>
           </div>
         </div>
@@ -130,11 +130,11 @@ export default function ProfileEditor({ initialProfile }: ProfileEditorProps) {
               <p className="text-sm font-medium text-ink">
                 {parsing ? "Parsing resume..." : "Click to upload or drag and drop"}
               </p>
-              <p className="text-xs text-black/40 mt-1">Plain text .txt file only</p>
+              <p className="text-xs text-black/40 mt-1">Supported: PDF, DOCX, or TXT</p>
             </div>
             <input
               type="file"
-              accept=".txt,text/plain"
+              accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={handleFileUpload}
               disabled={parsing}
               className="hidden"

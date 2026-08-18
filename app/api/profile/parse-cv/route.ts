@@ -75,6 +75,59 @@ IMPORTANT:
 - Do not invent or assume information
 - Return valid JSON only`;
 
+/**
+ * Extract text from uploaded resume file (PDF, DOCX, or TXT)
+ */
+async function extractTextFromFile(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+
+  if (file.type === "text/plain") {
+    // Plain text file
+    const text = new TextDecoder().decode(buffer);
+    return text.trim();
+  } else if (
+    file.type === "application/pdf" ||
+    file.name.toLowerCase().endsWith(".pdf")
+  ) {
+    // PDF file
+    try {
+      // @ts-ignore - dynamic require
+      const pdfParse = require("pdf-parse/lib/pdf.js");
+      const data = await pdfParse(Buffer.from(buffer));
+      return data.text.trim();
+    } catch (e) {
+      throw new Error(`Failed to parse PDF: ${e instanceof Error ? e.message : "Unknown error"}`);
+    }
+  } else if (
+    file.type ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.name.toLowerCase().endsWith(".docx")
+  ) {
+    // DOCX file
+    return new Promise((resolve, reject) => {
+      try {
+        // @ts-ignore - dynamic require
+        const DocxParser = require("docx-parser");
+        const parser = new DocxParser();
+        parser.parseBuffer(Buffer.from(buffer), (err: any, data: any) => {
+          if (err) {
+            reject(new Error(`Failed to parse DOCX: ${err.message || err}`));
+          } else {
+            const text = data?.fullText || data?.text || "";
+            resolve(text.trim());
+          }
+        });
+      } catch (e) {
+        reject(new Error(`Error initializing DOCX parser: ${e instanceof Error ? e.message : "Unknown error"}`));
+      }
+    });
+  } else {
+    throw new Error(
+      `Unsupported file type: ${file.type || file.name}. Supported formats: PDF, DOCX, TXT`
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     await requireUser();
@@ -86,18 +139,18 @@ export async function POST(request: NextRequest) {
       throw badRequest("No file provided");
     }
 
-    // For now, support text files only (PDF support requires external library)
-    if (file.type !== "text/plain") {
-      throw badRequest("Only text files (.txt) are currently supported");
-    }
+    console.log("[PARSE_CV] Parsing file:", { name: file.name, type: file.type, size: file.size });
 
-    const resumeText = await file.text();
+    // Extract text from file based on type
+    const resumeText = await extractTextFromFile(file);
 
     if (!resumeText || resumeText.trim().length < 50) {
       throw badRequest(
         "Resume text is too short or empty. Please provide a valid resume."
       );
     }
+
+    console.log("[PARSE_CV] Extracted text length:", resumeText.length);
 
     // Parse the resume using Claude
     const client = getAnthropicClient();
