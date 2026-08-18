@@ -79,52 +79,75 @@ IMPORTANT:
  * Extract text from uploaded resume file (PDF, DOCX, or TXT)
  */
 async function extractTextFromFile(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
+  console.log("[EXTRACT] Starting extraction for file:", { name: file.name, type: file.type });
 
-  if (file.type === "text/plain") {
-    // Plain text file
-    const text = new TextDecoder().decode(buffer);
-    return text.trim();
-  } else if (
-    file.type === "application/pdf" ||
-    file.name.toLowerCase().endsWith(".pdf")
-  ) {
-    // PDF file
-    try {
-      // @ts-ignore - dynamic require
-      const pdfParse = require("pdf-parse");
-      const data = await pdfParse(Buffer.from(buffer));
-      return data.text.trim();
-    } catch (e) {
-      throw new Error(`Failed to parse PDF: ${e instanceof Error ? e.message : "Unknown error"}`);
-    }
-  } else if (
-    file.type ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    file.name.toLowerCase().endsWith(".docx")
-  ) {
-    // DOCX file
-    return new Promise((resolve, reject) => {
+  try {
+    const buffer = await file.arrayBuffer();
+    console.log("[EXTRACT] Buffer size:", buffer.byteLength);
+
+    if (file.type === "text/plain" || file.name.toLowerCase().endsWith(".txt")) {
+      // Plain text file
+      console.log("[EXTRACT] Processing as text file");
+      const text = new TextDecoder().decode(buffer);
+      const trimmed = text.trim();
+      console.log("[EXTRACT] Text extracted, length:", trimmed.length);
+      return trimmed;
+    } else if (
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf")
+    ) {
+      // PDF file
+      console.log("[EXTRACT] Processing as PDF file");
       try {
         // @ts-ignore - dynamic require
-        const DocxParser = require("docx-parser");
-        const parser = new DocxParser();
-        parser.parseBuffer(Buffer.from(buffer), (err: any, data: any) => {
-          if (err) {
-            reject(new Error(`Failed to parse DOCX: ${err.message || err}`));
-          } else {
-            const text = data?.fullText || data?.text || "";
-            resolve(text.trim());
-          }
-        });
+        const pdfParse = require("pdf-parse");
+        console.log("[EXTRACT] pdf-parse loaded successfully");
+        const data = await pdfParse(Buffer.from(buffer));
+        const text = data.text.trim();
+        console.log("[EXTRACT] PDF text extracted, length:", text.length);
+        return text;
       } catch (e) {
-        reject(new Error(`Error initializing DOCX parser: ${e instanceof Error ? e.message : "Unknown error"}`));
+        console.error("[EXTRACT] PDF parsing error:", e);
+        throw new Error(`Failed to parse PDF: ${e instanceof Error ? e.message : "Unknown error"}`);
       }
-    });
-  } else {
-    throw new Error(
-      `Unsupported file type: ${file.type || file.name}. Supported formats: PDF, DOCX, TXT`
-    );
+    } else if (
+      file.type ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.name.toLowerCase().endsWith(".docx")
+    ) {
+      // DOCX file
+      console.log("[EXTRACT] Processing as DOCX file");
+      return new Promise((resolve, reject) => {
+        try {
+          // @ts-ignore - dynamic require
+          const DocxParser = require("docx-parser");
+          console.log("[EXTRACT] docx-parser loaded successfully");
+          const parser = new DocxParser();
+          parser.parseBuffer(Buffer.from(buffer), (err: any, data: any) => {
+            if (err) {
+              console.error("[EXTRACT] DOCX parse error:", err);
+              reject(new Error(`Failed to parse DOCX: ${err.message || err}`));
+            } else {
+              const text = data?.fullText || data?.text || "";
+              const trimmed = text.trim();
+              console.log("[EXTRACT] DOCX text extracted, length:", trimmed.length);
+              resolve(trimmed);
+            }
+          });
+        } catch (e) {
+          console.error("[EXTRACT] DOCX initialization error:", e);
+          reject(new Error(`Error initializing DOCX parser: ${e instanceof Error ? e.message : "Unknown error"}`));
+        }
+      });
+    } else {
+      console.error("[EXTRACT] Unsupported file type:", { type: file.type, name: file.name });
+      throw new Error(
+        `Unsupported file type: ${file.type || file.name}. Supported formats: PDF, DOCX, TXT`
+      );
+    }
+  } catch (error) {
+    console.error("[EXTRACT] Extraction failed:", error);
+    throw error;
   }
 }
 
@@ -136,15 +159,26 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File;
 
     if (!file) {
+      console.error("[PARSE_CV] No file provided");
       throw badRequest("No file provided");
     }
 
-    console.log("[PARSE_CV] Parsing file:", { name: file.name, type: file.type, size: file.size });
+    console.log("[PARSE_CV] Starting file parse:", { name: file.name, type: file.type, size: file.size });
 
     // Extract text from file based on type
-    const resumeText = await extractTextFromFile(file);
+    let resumeText: string;
+    try {
+      resumeText = await extractTextFromFile(file);
+      console.log("[PARSE_CV] Successfully extracted text, length:", resumeText.length);
+    } catch (extractError) {
+      console.error("[PARSE_CV] Text extraction failed:", extractError);
+      throw badRequest(
+        extractError instanceof Error ? extractError.message : "Failed to extract text from file"
+      );
+    }
 
     if (!resumeText || resumeText.trim().length < 50) {
+      console.error("[PARSE_CV] Resume text too short:", resumeText.length);
       throw badRequest(
         "Resume text is too short or empty. Please provide a valid resume."
       );
@@ -153,6 +187,7 @@ export async function POST(request: NextRequest) {
     console.log("[PARSE_CV] Extracted text length:", resumeText.length);
 
     // Parse the resume using Claude
+    console.log("[PARSE_CV] Calling Claude API to parse resume");
     const client = getAnthropicClient();
     const parseResponse = await client.messages.create({
       model: MODEL,
@@ -170,13 +205,17 @@ export async function POST(request: NextRequest) {
       .map((c) => (c.type === "text" ? c.text : ""))
       .join("");
 
+    console.log("[PARSE_CV] Claude response length:", responseText.length);
+
     // Extract JSON from response (in case there's markdown)
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.error("[PARSE_CV] Could not extract JSON from response");
       throw badRequest("Failed to parse resume - could not extract JSON");
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as ResumeDocument;
+    console.log("[PARSE_CV] Successfully parsed resume structure");
 
     return NextResponse.json({
       success: true,
@@ -184,7 +223,8 @@ export async function POST(request: NextRequest) {
       rawText: resumeText,
     });
   } catch (error) {
-    console.error("CV parse error:", error);
+    console.error("[PARSE_CV] Error:", error instanceof Error ? error.message : String(error));
+    console.error("[PARSE_CV] Full error:", error);
     if (error instanceof SyntaxError) {
       return toErrorResponse(badRequest("Invalid resume format or structure"));
     }
