@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2, AlertCircle, Check } from "lucide-react";
+import { Download, Loader2, Check } from "lucide-react";
 import type { ITailoredResume } from "@/lib/models";
 import type { IJob } from "@/lib/models";
 
@@ -29,20 +29,31 @@ export default function TailorResultsView({
         : "text-[#b3452c]";
 
   function convertResumeToText(): string {
-    // Try current first (user-edited), then fall back to generated
-    const resume = tailored.current?.resume || tailored.generated?.resume;
+    // Try current first (user-edited), then generated, then fallback to profile snapshot
+    let resume = tailored.current?.resume || tailored.generated?.resume;
 
-    if (!resume) {
-      console.warn("No resume data available for export", {
+    // If no tailored resume, use the master resume as fallback
+    if (!resume || (typeof resume === 'object' && Object.keys(resume).length === 0)) {
+      console.warn("Resume is empty or missing, using profile snapshot as fallback", {
         hasCurrent: !!tailored.current,
         hasGenerated: !!tailored.generated,
         currentResume: !!tailored.current?.resume,
         generatedResume: !!tailored.generated?.resume,
+        hasProfileSnapshot: !!tailored.profileSnapshot,
       });
+      resume = tailored.profileSnapshot;
+    }
+
+    if (!resume) {
+      console.error("No resume data available for export - profileSnapshot is also missing");
       return "";
     }
 
-    console.log("Using resume:", tailored.current?.resume ? "current" : "generated");
+    console.log("Using resume source:",
+      tailored.current?.resume ? "current" :
+      tailored.generated?.resume ? "generated" :
+      "profileSnapshot (fallback)"
+    );
 
     const lines: string[] = [];
 
