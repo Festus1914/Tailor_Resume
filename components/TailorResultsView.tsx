@@ -28,84 +28,127 @@ export default function TailorResultsView({
         ? "text-[#8a6d1f]"
         : "text-[#b3452c]";
 
-  const resumeContent = convertResumeToText();
-  const coverLetterContent = tailored.current?.coverLetter || "";
-
   function convertResumeToText(): string {
     const resume = tailored.current?.resume;
-    if (!resume) return "";
+    if (!resume) {
+      console.warn("No resume data available for export");
+      return "";
+    }
 
     const lines: string[] = [];
 
-    if (resume.header?.fullName) lines.push(resume.header.fullName);
-    if (resume.header?.headline) lines.push(resume.header.headline);
-    if (
-      resume.header?.email ||
-      resume.header?.phone ||
-      resume.header?.location
-    ) {
-      lines.push(
-        [resume.header.email, resume.header.phone, resume.header.location]
-          .filter(Boolean)
-          .join(" | ")
-      );
+    // Header section
+    if (resume.header?.fullName) {
+      lines.push(resume.header.fullName.toUpperCase());
+    }
+    if (resume.header?.headline) {
+      lines.push(resume.header.headline);
     }
 
+    // Contact info
+    const contactInfo = [
+      resume.header?.email,
+      resume.header?.phone,
+      resume.header?.location,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    if (contactInfo) {
+      lines.push(contactInfo);
+    }
+
+    // Professional summary
     if (resume.summary) {
       lines.push("", "PROFESSIONAL SUMMARY", resume.summary);
     }
 
-    if (resume.experience?.length > 0) {
+    // Experience
+    if (resume.experience && resume.experience.length > 0) {
       lines.push("", "EXPERIENCE");
       resume.experience.forEach((exp: any) => {
-        lines.push(exp.title + ", " + exp.company);
-        lines.push(
-          `${exp.startDate} - ${exp.isCurrent ? "Present" : exp.endDate}`
-        );
-        exp.bullets?.forEach((bullet: string) => {
-          lines.push("• " + bullet);
-        });
+        if (exp.title || exp.company) {
+          lines.push(`${exp.title || "Position"}, ${exp.company || "Company"}`);
+        }
+        if (exp.startDate || exp.endDate) {
+          const endDate = exp.isCurrent ? "Present" : exp.endDate || "Current";
+          lines.push(`${exp.startDate || "Start"} - ${endDate}`);
+        }
+        if (exp.bullets && Array.isArray(exp.bullets)) {
+          exp.bullets.forEach((bullet: any) => {
+            if (bullet) lines.push(`• ${bullet}`);
+          });
+        }
         lines.push("");
       });
     }
 
-    if (resume.skills?.length > 0) {
+    // Skills
+    if (resume.skills && resume.skills.length > 0) {
       lines.push("", "SKILLS");
       resume.skills.forEach((group: any) => {
-        lines.push(`${group.label}: ${group.items?.join(", ")}`);
+        const skillsStr = Array.isArray(group.items)
+          ? group.items.join(", ")
+          : String(group.items || "");
+        if (skillsStr) {
+          lines.push(`${group.label || "Skills"}: ${skillsStr}`);
+        }
       });
     }
 
-    if (resume.education?.length > 0) {
+    // Education
+    if (resume.education && resume.education.length > 0) {
       lines.push("", "EDUCATION");
       resume.education.forEach((edu: any) => {
-        lines.push(`${edu.degree} in ${edu.field}`);
-        lines.push(edu.school);
-        if (edu.location) lines.push(edu.location);
+        if (edu.degree && edu.field) {
+          lines.push(`${edu.degree} in ${edu.field}`);
+        }
+        if (edu.school) {
+          lines.push(edu.school);
+        }
+        if (edu.location) {
+          lines.push(edu.location);
+        }
         lines.push("");
       });
     }
 
-    return lines.join("\n");
+    const result = lines.join("\n").trim();
+    console.log("Resume text length:", result.length);
+    return result;
   }
 
+  const resumeContent = convertResumeToText();
+  const coverLetterContent = tailored.current?.coverLetter || "";
+
   async function downloadFile(format: "pdf" | "docx", content: string) {
+    console.log(`[EXPORT] Starting ${format} export, content length:`, content?.length || 0);
+
     if (!content || content.trim().length === 0) {
-      alert("No content to download");
+      const msg = activeTab === "coverLetter"
+        ? "No cover letter available. Please make sure it was generated."
+        : "No resume content available. Please make sure the resume was tailored first.";
+      alert(msg);
+      console.warn(`[EXPORT] Empty content for ${format}:`, msg);
       return;
     }
 
     setDownloading(format);
 
     try {
+      const payload = {
+        content: content.trim(),
+        title: `${job.title} - ${job.company}`,
+      };
+
+      console.log(`[EXPORT] Sending ${format} request with ${payload.content.length} chars`);
+
       const res = await fetch(`/api/export/${format}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: content.trim(),
-          title: `${job.title} - ${job.company}`,
-        }),
+        body: JSON.stringify(payload),
       });
+
+      console.log(`[EXPORT] Response: ${res.status} ${res.statusText}`);
 
       if (!res.ok) {
         let errorMessage = `HTTP ${res.status}`;
@@ -113,15 +156,20 @@ export default function TailorResultsView({
           const errorData = await res.json();
           errorMessage = errorData.error || errorMessage;
         } catch {
-          try {
-            const text = await res.text();
-            if (text) errorMessage = text.substring(0, 100);
-          } catch {}
+          const text = await res.text().catch(() => "");
+          if (text) errorMessage = text.substring(0, 200);
         }
+        console.error(`[EXPORT] Error:`, errorMessage);
         throw new Error(errorMessage);
       }
 
       const blob = await res.blob();
+      console.log(`[EXPORT] Downloaded ${blob.size} bytes`);
+
+      if (blob.size === 0) {
+        throw new Error("Export created empty file. Please try again.");
+      }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -134,9 +182,9 @@ export default function TailorResultsView({
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 2000);
     } catch (e) {
-      alert(
-        `Download failed: ${e instanceof Error ? e.message : "Unknown error"}`
-      );
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      console.error(`[EXPORT] Failed:`, msg);
+      alert(`Download failed: ${msg}`);
     } finally {
       setDownloading(null);
     }
