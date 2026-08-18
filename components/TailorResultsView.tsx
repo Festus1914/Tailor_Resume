@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Download, Loader2, Check } from "lucide-react";
 import type { ITailoredResume } from "@/lib/models";
 import type { IJob } from "@/lib/models";
@@ -19,6 +19,37 @@ export default function TailorResultsView({
   const [activeTab, setActiveTab] = useState<Tab>("resume");
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  // Debug: Log the entire tailored object structure
+  useEffect(() => {
+    console.log("[TAILOR_VIEW] Component mounted, full tailored object:", {
+      _id: tailored._id,
+      userId: tailored.userId,
+      jobId: tailored.jobId,
+      hasCurrent: !!tailored.current,
+      hasGenerated: !!tailored.generated,
+      hasProfileSnapshot: !!tailored.profileSnapshot,
+      currentResumeType: typeof tailored.current?.resume,
+      generatedResumeType: typeof tailored.generated?.resume,
+      profileSnapshotType: typeof tailored.profileSnapshot,
+      currentResumeString: typeof (tailored.current?.resume as any),
+      // Log the actual keys to see structure
+      currentResumeIsObject: tailored.current?.resume && typeof tailored.current.resume === 'object',
+      generatedResumeIsObject: tailored.generated?.resume && typeof tailored.generated.resume === 'object',
+      profileSnapshotIsObject: tailored.profileSnapshot && typeof tailored.profileSnapshot === 'object',
+    });
+
+    // Try to see what's actually in the resume objects
+    if (tailored.current?.resume) {
+      console.log("[TAILOR_VIEW] current.resume content:", JSON.stringify(tailored.current.resume).substring(0, 500));
+    }
+    if (tailored.generated?.resume) {
+      console.log("[TAILOR_VIEW] generated.resume content:", JSON.stringify(tailored.generated.resume).substring(0, 500));
+    }
+    if (tailored.profileSnapshot) {
+      console.log("[TAILOR_VIEW] profileSnapshot content:", JSON.stringify(tailored.profileSnapshot).substring(0, 500));
+    }
+  }, [tailored]);
 
   const matchScore = tailored.analysis?.matchScore || 0;
   const matchColor =
