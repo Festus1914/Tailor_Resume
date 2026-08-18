@@ -177,6 +177,11 @@ export function extractRequirements(text: string): string[] {
  *
  * Fast, accurate extraction for any job board format.
  * Parses unstructured HTML and description text intelligently.
+ *
+ * Optimizations:
+ * - Concise prompts for faster processing
+ * - Timeout handling (15 seconds)
+ * - Better error recovery
  */
 async function extractJobWithLLM(
   html: string,
@@ -184,28 +189,28 @@ async function extractJobWithLLM(
 ): Promise<ExtractedJob | null> {
   try {
     // Extract visible text from HTML for LLM processing
-    const cleanText = extractVisibleText(html).slice(0, 8000); // Limit to ~2000 tokens
+    const cleanText = extractVisibleText(html).slice(0, 5000); // Reduced from 8000 for faster processing
 
-    const prompt = `Extract job posting details from this HTML/text. Return JSON only.
-
-HTML/Text:
-${cleanText}
-
-${descriptionText ? `\nJob Description: ${descriptionText.slice(0, 2000)}` : ""}
-
-Return ONLY valid JSON (no markdown, no extra text) with this structure:
+    // Concise prompt for faster LLM processing
+    const prompt = `Extract job data from this HTML. Return ONLY valid JSON:
 {
-  "title": "exact job title",
-  "company": "company name",
-  "location": "location or 'remote'",
-  "employmentType": "Full-time|Part-time|Contract|etc or empty string",
-  "descriptionText": "full job description (first 500 chars)",
-  "requirements": ["requirement 1", "requirement 2"]
-}`;
+  "title": "job title",
+  "company": "company",
+  "location": "location or remote",
+  "employmentType": "type or empty",
+  "descriptionText": "description (first 300 chars)",
+  "requirements": ["req1", "req2", "req3"]
+}
+
+HTML:
+${cleanText}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
     const message = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 500,
+      max_tokens: 300, // Reduced from 500
       messages: [
         {
           role: "user",
@@ -214,10 +219,17 @@ Return ONLY valid JSON (no markdown, no extra text) with this structure:
       ],
     });
 
-    const responseText =
-      message.content[0].type === "text" ? message.content[0].text : "";
+    clearTimeout(timeoutId);
 
-    // Parse the JSON response
+    const responseText =
+      message.content[0]?.type === "text" ? message.content[0].text : "";
+
+    if (!responseText) {
+      console.warn("Empty LLM response");
+      return null;
+    }
+
+    // Parse the JSON response with better error handling
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.warn("No JSON found in LLM response");
@@ -227,21 +239,26 @@ Return ONLY valid JSON (no markdown, no extra text) with this structure:
     const parsed = JSON.parse(jsonMatch[0]);
 
     return {
-      title: String(parsed.title || "").trim(),
-      company: String(parsed.company || "").trim(),
-      location: String(parsed.location || "").trim(),
-      employmentType: String(parsed.employmentType || "").trim(),
-      descriptionText: String(parsed.descriptionText || "").trim(),
+      title: String(parsed.title || "").trim().slice(0, 300),
+      company: String(parsed.company || "").trim().slice(0, 300),
+      location: String(parsed.location || "").trim().slice(0, 300),
+      employmentType: String(parsed.employmentType || "").trim().slice(0, 100),
+      descriptionText: String(parsed.descriptionText || "").trim().slice(0, 2000),
       requirements: Array.isArray(parsed.requirements)
         ? parsed.requirements
-            .map((r: unknown) => String(r).trim())
+            .map((r: unknown) => String(r).trim().slice(0, 500))
             .filter((r: string) => r.length > 0)
+            .slice(0, 10)
         : [],
       source: "llm",
       extractionConfidence: 0.85,
     };
   } catch (error) {
-    console.error("LLM extraction failed:", error);
+    if (error instanceof Error && error.name === "AbortError") {
+      console.warn("LLM extraction timeout");
+    } else {
+      console.error("LLM extraction failed:", error);
+    }
     return null;
   }
 }

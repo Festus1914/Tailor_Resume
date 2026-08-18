@@ -44,23 +44,40 @@ export default function JobSubmissionForm({
       return;
     }
 
+    // Validate URL format
+    try {
+      new URL(url.trim());
+    } catch {
+      setError("Please enter a valid URL (starts with http:// or https://)");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
     try {
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const data = await res.json();
 
       if (!res.ok) {
+        const errorMsg = data.error || data.warning;
+        if (errorMsg && typeof errorMsg === "string") {
+          throw new Error(errorMsg);
+        }
         throw new Error(
-          data.error ||
-            data.warning ||
-            "Failed to submit job. Please check the URL and try again."
+          "Failed to extract job details. Please check the URL is valid and publicly accessible."
         );
       }
 
@@ -68,9 +85,15 @@ export default function JobSubmissionForm({
       setUrl("");
       onJobSubmitted?.(data.job._id);
 
-      setTimeout(() => setSuccess(false), 3000);
+      setTimeout(() => setSuccess(false), 4000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to submit job");
+      if (e instanceof Error && e.name === "AbortError") {
+        setError(
+          "Job extraction took too long. The website might be slow. Try again or paste the job details manually."
+        );
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to submit job");
+      }
     } finally {
       setSubmitting(false);
     }

@@ -310,28 +310,63 @@ function ResumeDoc({ content }: { content: string }) {
 
 export async function POST(req: NextRequest) {
   try {
-    // Without this, the endpoint is a free document-rendering service for anyone
-    // who finds the URL. Phase 7 tightens it further: exports will take a resume
-    // id and load the content server-side after an ownership check, instead of
-    // rendering whatever body they are handed.
     await requireUser();
 
     const { content, title } = await req.json();
 
+    // Better validation
     if (!content || typeof content !== "string") {
-      return NextResponse.json({ error: "content is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Resume content is required to generate PDF" },
+        { status: 400 }
+      );
     }
 
-    const buffer = await renderToBuffer(<ResumeDoc content={content} />);
+    if (content.trim().length === 0) {
+      return NextResponse.json(
+        { error: "Resume content cannot be empty" },
+        { status: 400 }
+      );
+    }
+
+    // Sanitize filename
+    const filename = (title || "resume")
+      .slice(0, 100)
+      .replace(/[^a-z0-9\s-]/gi, "")
+      .trim() || "resume";
+
+    let buffer: Uint8Array;
+    try {
+      // Add timeout for rendering
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout
+
+      buffer = await Promise.race([
+        renderToBuffer(<ResumeDoc content={content} />),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("PDF rendering timeout")), 25000)
+        ),
+      ]);
+
+      clearTimeout(timeoutId);
+    } catch (renderErr) {
+      console.error("PDF render error:", renderErr);
+      return NextResponse.json(
+        { error: "Failed to generate PDF. Please try again." },
+        { status: 500 }
+      );
+    }
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${title || "document"}.pdf"`,
+        "Content-Disposition": `attachment; filename="${filename}.pdf"`,
+        "Cache-Control": "no-cache, no-store",
       },
     });
   } catch (err) {
+    console.error("PDF export error:", err);
     return toErrorResponse(err);
   }
 }

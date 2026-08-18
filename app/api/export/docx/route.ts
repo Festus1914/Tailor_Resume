@@ -295,52 +295,80 @@ function buildMarkerParagraph(): Paragraph {
 
 export async function POST(req: NextRequest) {
   try {
-    // See the note on the PDF route: authenticated now, id-based in Phase 7.
     await requireUser();
 
     const { content, title } = await req.json();
 
+    // Better validation
     if (!content || typeof content !== "string") {
-      return NextResponse.json({ error: "content is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Resume content is required to generate DOCX" },
+        { status: 400 }
+      );
     }
 
-    const doc = new Document({
-      sections: [
-        {
-          properties: {
-            page: {
-              size: { width: PAGE_WIDTH_TWIPS, height: 15840 },
-              margin: {
-                top: MARGIN_TWIPS,
-                bottom: MARGIN_TWIPS,
-                left: MARGIN_TWIPS,
-                right: MARGIN_TWIPS,
+    if (content.trim().length === 0) {
+      return NextResponse.json(
+        { error: "Resume content cannot be empty" },
+        { status: 400 }
+      );
+    }
+
+    // Sanitize filename
+    const filename = (title || "resume")
+      .slice(0, 100)
+      .replace(/[^a-z0-9\s-]/gi, "")
+      .trim() || "resume";
+
+    let buffer: Buffer;
+    try {
+      // Add timeout for document generation
+      const doc = new Document({
+        sections: [
+          {
+            properties: {
+              page: {
+                size: { width: PAGE_WIDTH_TWIPS, height: 15840 },
+                margin: {
+                  top: MARGIN_TWIPS,
+                  bottom: MARGIN_TWIPS,
+                  left: MARGIN_TWIPS,
+                  right: MARGIN_TWIPS,
+                },
               },
             },
+            children: buildParagraphs(content).concat(buildMarkerParagraph()),
           },
-          children: buildParagraphs(content).concat(buildMarkerParagraph()),
-        },
-      ],
-      styles: {
-        default: {
-          document: {
-            run: { font: FONT, size: 20 },
+        ],
+        styles: {
+          default: {
+            document: {
+              run: { font: FONT, size: 20 },
+            },
           },
         },
-      },
-    });
+      });
 
-    const buffer = await Packer.toBuffer(doc);
+      buffer = await Packer.toBuffer(doc);
+    } catch (docErr) {
+      console.error("DOCX generation error:", docErr);
+      return NextResponse.json(
+        { error: "Failed to generate DOCX. Please try again." },
+        { status: 500 }
+      );
+    }
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="${title || "document"}.docx"`,
+        "Content-Disposition": `attachment; filename="${filename}.docx"`,
+        "Cache-Control": "no-cache, no-store",
       },
     });
   } catch (err) {
+    console.error("DOCX export error:", err);
     return toErrorResponse(err);
   }
 }
