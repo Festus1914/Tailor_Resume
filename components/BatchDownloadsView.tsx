@@ -31,12 +31,17 @@ export default function BatchDownloadsView({
       if (!resumeRes.ok) throw new Error("Failed to fetch resume");
 
       const resumeData = await resumeRes.json();
-      const resumeContent = resumeData.resume?.current || resumeData.resume?.generated;
+      // current/generated are { resume, coverLetter } wrappers — unwrap the document
+      const version = resumeData.resume?.current || resumeData.resume?.generated;
+      const resumeContent = version?.resume ?? version;
 
       if (!resumeContent) throw new Error("No resume content found");
 
       // Format resume content as text for export
       const resumeText = formatResumeForExport(resumeContent);
+      if (!resumeText.trim()) {
+        throw new Error("Resume content is empty. Open the resume, re-save it, and try again.");
+      }
       const filename = `resume-${resumeId.slice(0, 8)}`;
 
       // POST to export endpoint
@@ -118,8 +123,11 @@ export default function BatchDownloadsView({
       lines.push("");
       lines.push("SKILLS");
       for (const group of resume.skills) {
+        const items = Array.isArray(group.items)
+          ? group.items.join(", ")
+          : String(group.items ?? "");
         lines.push(`${group.label}`);
-        lines.push(group.items.join(", "));
+        if (items) lines.push(items);
       }
     }
 

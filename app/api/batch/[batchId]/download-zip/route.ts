@@ -49,8 +49,10 @@ export async function GET(
       const resume = await TailoredResume.findById(task.resumeId);
       if (!resume) continue;
 
-      // Create simple text-based resume for ZIP
-      const resumeText = formatResumeAsText(resume.current);
+      // Create simple text-based resume for ZIP.
+      // `current` is an IGeneratedContent wrapper ({ resume, coverLetter }) —
+      // unwrap the ResumeDocument before formatting.
+      const resumeText = formatResumeAsText(resume.current?.resume ?? resume.current);
       const filename = `${resume.jobSnapshot?.company || "Job"}-${resume.jobSnapshot?.title || "Resume"}.txt`
         .replace(/[^a-z0-9\s-]/gi, "")
         .slice(0, 50);
