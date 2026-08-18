@@ -173,7 +173,51 @@ export default function TailorResultsView({
     }
   }
 
-  const resumeContent = convertResumeToText();
+  // Extract resume content with multiple fallback strategies
+  function getResumeContent(): string {
+    // First try the structured conversion
+    let content = convertResumeToText();
+
+    if (content && content.length > 0) {
+      console.log("[RESUME_CONTENT] Using structured conversion, length:", content.length);
+      return content;
+    }
+
+    console.warn("[RESUME_CONTENT] Structured conversion returned empty, trying fallback methods");
+
+    // Fallback 1: Try to extract from current resume object directly
+    if (tailored.current?.resume) {
+      console.log("[RESUME_CONTENT] Trying raw current resume JSON");
+      content = JSON.stringify(tailored.current.resume, null, 2);
+      if (content.length > 10) {
+        return content;
+      }
+    }
+
+    // Fallback 2: Try generated resume
+    if (tailored.generated?.resume) {
+      console.log("[RESUME_CONTENT] Trying raw generated resume JSON");
+      content = JSON.stringify(tailored.generated.resume, null, 2);
+      if (content.length > 10) {
+        return content;
+      }
+    }
+
+    // Fallback 3: Try profileSnapshot
+    if (tailored.profileSnapshot) {
+      console.log("[RESUME_CONTENT] Trying raw profileSnapshot JSON");
+      content = JSON.stringify(tailored.profileSnapshot, null, 2);
+      if (content.length > 10) {
+        return content;
+      }
+    }
+
+    // Fallback 4: At least return something with the job info
+    console.error("[RESUME_CONTENT] All methods failed, creating emergency resume");
+    return `Resume for ${job.title} at ${job.company}\n\n${job.descriptionText || "No description available"}`;
+  }
+
+  const resumeContent = getResumeContent();
   const coverLetterContent = tailored.current?.coverLetter || "";
 
   async function downloadFile(format: "pdf" | "docx", content: string) {
