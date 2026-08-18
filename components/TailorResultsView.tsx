@@ -206,52 +206,64 @@ export default function TailorResultsView({
 
   // Calculate content when download button is clicked, not at render time
   const getResumeContent = (): string => {
-    console.log("[GET_RESUME] Calculating resume content for download");
+    console.log("[GET_RESUME] === Starting resume content extraction ===");
+    console.log("[GET_RESUME] tailored object keys:", Object.keys(tailored));
 
-    // First try the structured conversion
-    let content = convertResumeToText();
-
-    if (content && content.length > 0) {
-      console.log("[GET_RESUME] Using structured conversion, length:", content.length);
-      return content;
-    }
-
-    console.warn("[GET_RESUME] Structured conversion returned empty, trying fallback methods");
-
-    // Fallback 1: Try to extract from current resume object directly
-    if (tailored.current?.resume) {
-      console.log("[GET_RESUME] Trying raw current resume JSON");
-      content = JSON.stringify(tailored.current.resume, null, 2);
-      if (content.length > 10) {
-        console.log("[GET_RESUME] Using current resume JSON, length:", content.length);
-        return content;
+    try {
+      // Attempt 1: Structured text conversion
+      console.log("[GET_RESUME] Attempt 1: Structured conversion");
+      const structured = convertResumeToText();
+      console.log("[GET_RESUME] Structured result length:", structured?.length || 0);
+      if (structured && structured.length > 50) {
+        console.log("[GET_RESUME] ✓ Using structured conversion");
+        return structured;
       }
-    }
 
-    // Fallback 2: Try generated resume
-    if (tailored.generated?.resume) {
-      console.log("[GET_RESUME] Trying raw generated resume JSON");
-      content = JSON.stringify(tailored.generated.resume, null, 2);
-      if (content.length > 10) {
-        console.log("[GET_RESUME] Using generated resume JSON, length:", content.length);
-        return content;
+      // Attempt 2: Current resume raw
+      console.log("[GET_RESUME] Attempt 2: Current resume object");
+      if (tailored.current?.resume) {
+        const currentStr = JSON.stringify(tailored.current.resume);
+        console.log("[GET_RESUME] Current resume length:", currentStr.length);
+        if (currentStr.length > 50) {
+          console.log("[GET_RESUME] ✓ Using current resume");
+          return currentStr;
+        }
       }
-    }
 
-    // Fallback 3: Try profileSnapshot
-    if (tailored.profileSnapshot) {
-      console.log("[GET_RESUME] Trying raw profileSnapshot JSON");
-      content = JSON.stringify(tailored.profileSnapshot, null, 2);
-      if (content.length > 10) {
-        console.log("[GET_RESUME] Using profileSnapshot JSON, length:", content.length);
-        return content;
+      // Attempt 3: Generated resume raw
+      console.log("[GET_RESUME] Attempt 3: Generated resume object");
+      if (tailored.generated?.resume) {
+        const generatedStr = JSON.stringify(tailored.generated.resume);
+        console.log("[GET_RESUME] Generated resume length:", generatedStr.length);
+        if (generatedStr.length > 50) {
+          console.log("[GET_RESUME] ✓ Using generated resume");
+          return generatedStr;
+        }
       }
-    }
 
-    // Fallback 4: At least return something with the job info
-    const emergencyResume = `Resume for ${job.title} at ${job.company}\n\n${job.descriptionText || "No description available"}`;
-    console.error("[GET_RESUME] All methods failed, using emergency resume, length:", emergencyResume.length);
-    return emergencyResume;
+      // Attempt 4: Profile snapshot
+      console.log("[GET_RESUME] Attempt 4: Profile snapshot");
+      if (tailored.profileSnapshot) {
+        const profileStr = JSON.stringify(tailored.profileSnapshot);
+        console.log("[GET_RESUME] Profile snapshot length:", profileStr.length);
+        if (profileStr.length > 50) {
+          console.log("[GET_RESUME] ✓ Using profile snapshot");
+          return profileStr;
+        }
+      }
+
+      // Attempt 5: Emergency fallback - ALWAYS has content
+      console.log("[GET_RESUME] Attempt 5: Emergency fallback");
+      const fallback = `RESUME\n\nPosition: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location || "Not specified"}\n\n${job.descriptionText || "Job description not available"}`;
+      console.log("[GET_RESUME] ✓ Using emergency fallback, length:", fallback.length);
+      return fallback;
+    } catch (error) {
+      console.error("[GET_RESUME] ERROR during extraction:", error);
+      // Even if there's an error, return something
+      const safeFallback = `Position: ${job.title}\nCompany: ${job.company}`;
+      console.log("[GET_RESUME] ✓ Returning safe fallback after error, length:", safeFallback.length);
+      return safeFallback;
+    }
   };
 
   const getCoverLetterContent = (): string => {
@@ -259,31 +271,33 @@ export default function TailorResultsView({
   };
 
   async function downloadFile(format: "pdf" | "docx") {
+    console.log(`\n[DOWNLOAD] === Starting ${format.toUpperCase()} download ===`);
+
     // Get content at download time, not at render time
     let content = "";
     if (activeTab === "coverLetter") {
+      console.log("[DOWNLOAD] Getting cover letter content");
       content = getCoverLetterContent();
     } else {
+      console.log("[DOWNLOAD] Getting resume content");
       content = getResumeContent();
     }
 
-    console.log(`[EXPORT] Starting ${format} export, content length:`, content?.length || 0);
-    console.log(`[EXPORT] Tab: ${activeTab}, content preview:`, content.substring(0, 100));
+    const contentLength = content?.length || 0;
+    console.log(`[DOWNLOAD] Content retrieved, length: ${contentLength}`);
+    console.log(`[DOWNLOAD] Content preview (first 200 chars):`, content?.substring(0, 200));
 
     if (!content || content.trim().length === 0) {
       const msg = activeTab === "coverLetter"
         ? "No cover letter available. Please make sure it was generated."
-        : "No resume content available. Please refresh the page and try again.";
+        : "No resume content available.";
+      console.error(`[DOWNLOAD] ✗ FAILED - ${msg}`);
       alert(msg);
-      console.error(`[EXPORT] Empty content for ${format}:`, msg);
-      console.log("[EXPORT] Debug info:", {
-        currentResume: !!tailored.current?.resume,
-        generatedResume: !!tailored.generated?.resume,
-        profileSnapshot: !!tailored.profileSnapshot,
-        activeTab,
-      });
       return;
     }
+
+    console.log(`[DOWNLOAD] ✓ Content validation passed (${contentLength} chars)`);
+    console.log(`[DOWNLOAD] Preparing to send to /api/export/${format}`);
 
     setDownloading(format);
 
