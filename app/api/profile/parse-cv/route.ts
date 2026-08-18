@@ -100,10 +100,22 @@ async function extractTextFromFile(file: File): Promise<string> {
       console.log("[EXTRACT] Processing as PDF file");
       try {
         // @ts-ignore - dynamic require
-        const pdfParse = require("pdf-parse");
-        console.log("[EXTRACT] pdf-parse loaded successfully");
-        const data = await pdfParse(Buffer.from(buffer));
-        const text = data.text.trim();
+        const pdfjs = require("pdfjs-dist/legacy/build/pdf");
+        console.log("[EXTRACT] pdfjs-dist loaded successfully");
+
+        const pdfData = new Uint8Array(buffer);
+        const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
+        console.log("[EXTRACT] PDF loaded, pages:", pdf.numPages);
+
+        let fullText = "";
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item: any) => item.str).join(" ");
+          fullText += pageText + "\n";
+        }
+
+        const text = fullText.trim();
         console.log("[EXTRACT] PDF text extracted, length:", text.length);
         return text;
       } catch (e) {
