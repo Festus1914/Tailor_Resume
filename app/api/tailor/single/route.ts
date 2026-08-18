@@ -64,6 +64,19 @@ export const POST = route(async (req: NextRequest) => {
   // Generate tailored resume
   const result = await tailorResume(profile.masterResume, job);
 
+  console.log("[TAILOR/SINGLE] Tailoring complete, result structure:", {
+    hasResume: !!result.resume,
+    resumeType: typeof result.resume,
+    resumeKeys: result.resume ? Object.keys(result.resume) : [],
+    hasCoverLetter: !!result.coverLetter,
+    coverLetterLength: result.coverLetter?.length || 0,
+  });
+
+  // Validate resume structure before saving
+  if (!result.resume || Object.keys(result.resume).length === 0) {
+    console.warn("[TAILOR/SINGLE] Warning: resume is empty or missing, will use profile snapshot as fallback");
+  }
+
   // Save to database
   const tailored = await TailoredResume.create({
     userId: user._id,
@@ -89,6 +102,8 @@ export const POST = route(async (req: NextRequest) => {
     isEdited: false,
     editedAt: null,
   });
+
+  console.log("[TAILOR/SINGLE] TailoredResume saved with _id:", tailored._id);
 
   return NextResponse.json(
     {

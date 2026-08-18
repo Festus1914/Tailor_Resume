@@ -57,6 +57,14 @@ export default function TailorResultsView({
 
     const lines: string[] = [];
 
+    console.log("[CONVERT] Resume object structure:", {
+      hasHeader: !!resume.header,
+      hasSummary: !!resume.summary,
+      experienceCount: resume.experience?.length || 0,
+      skillsCount: resume.skills?.length || 0,
+      educationCount: resume.education?.length || 0,
+    });
+
     // Header section
     if (resume.header?.fullName) {
       lines.push(resume.header.fullName.toUpperCase());
@@ -133,7 +141,7 @@ export default function TailorResultsView({
     }
 
     const result = lines.join("\n").trim();
-    console.log("Resume text length:", result.length);
+    console.log("[CONVERT] Resume text length:", result.length, "characters");
     return result;
   }
 
