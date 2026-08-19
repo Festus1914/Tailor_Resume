@@ -120,7 +120,7 @@ export default function TailorResultsView({
         lines.push(header.fullName.toUpperCase());
       }
       if (header.headline) {
-        lines.push(header.headline);
+        lines.push("", header.headline);
       }
 
       // Contact info
