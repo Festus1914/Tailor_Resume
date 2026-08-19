@@ -120,7 +120,6 @@ export default function TailorResultsView({
         lines.push(header.fullName.toUpperCase());
       }
       if (header.headline) {
-        lines.push("");
         lines.push(header.headline);
       }
 
@@ -486,10 +485,10 @@ function ResumePreview({ resume }: { resume: any }) {
     <div className="max-w-2xl mx-auto space-y-4">
       {/* Header */}
       <div className="text-center pb-4 border-b border-black/10">
-        <h1 className="text-xl font-bold">{resume.header?.fullName}</h1>
-        {resume.header?.headline && (
-          <p className="text-sm text-black/60">{resume.header.headline}</p>
-        )}
+  <h1 className="text-xl font-bold mb-0">{resume.header?.fullName}</h1>
+  {resume.header?.headline && (
+    <p className="text-sm text-black/60 mt-0.5">{resume.header.headline}</p>
+  )}
         {(resume.header?.email ||
           resume.header?.phone ||
           resume.header?.location) && (
