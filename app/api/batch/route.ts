@@ -251,7 +251,7 @@ async function fastProcessJob(task: any, userId: any): Promise<void> {
     const resumePromise = tailorResumeAsync(
       taskId,
       userId,
-      job._id,
+      job,
       profile,
       description
     ).catch(() => null);
@@ -285,7 +285,7 @@ async function fastProcessJob(task: any, userId: any): Promise<void> {
 async function tailorResumeAsync(
   taskId: any,
   userId: any,
-  jobId: any,
+  job: any,
   profile: any,
   jobDescription: string
 ): Promise<void> {
