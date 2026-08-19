@@ -290,25 +290,36 @@ async function tailorResumeAsync(
   jobDescription: string
 ): Promise<void> {
   try {
-    // Get master resume text
     const masterResume = profile.masterResume;
-    const resumeText = formatResumeText(masterResume);
 
     // Call Claude to tailor (with timeout)
     const client = getAnthropicClient();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    let tailoredText = resumeText;
+    let tailoredText = "";
     try {
       const response = await client.messages.create({
         model: MODEL,
         max_tokens: 2000,
-        system: `You are an expert resume writer. Tailor the resume to match the job description. Return ONLY the tailored resume text, no explanation.`,
+        system: `You are an expert resume writer. Tailor the resume to match the job description by emphasizing relevant skills and experience, reordering content, and adjusting wording — without inventing new facts.
+
+Return ONLY valid JSON (no markdown, no explanation) matching this structure:
+{
+  "header": {"fullName": "string", "headline": "string", "email": "string", "phone": "string", "location": "string", "links": [{"label": "string", "url": "string"}]},
+  "summary": "string",
+  "experience": [{"company": "string", "title": "string", "location": "string", "startDate": "string", "endDate": "string", "isCurrent": boolean, "companyDescription": "string", "bullets": ["string"]}],
+  "skills": [{"label": "string", "items": ["string"]}],
+  "education": [{"school": "string", "degree": "string", "field": "string", "startDate": "string", "endDate": "string", "location": "string", "activities": ["string"]}],
+  "certifications": [{"name": "string", "issuer": "string", "date": "string"}],
+  "projects": [{"name": "string", "description": "string", "bullets": ["string"], "url": "string"}]
+}
+
+Keep all fields present in the master resume; only reorder/reword content to fit the job. Do not remove factual information.`,
         messages: [
           {
             role: "user",
-            content: `Master Resume:\n${resumeText}\n\nJob Description:\n${jobDescription}\n\nTailor this resume for this job.`,
+            content: `Master Resume (JSON):\n${JSON.stringify(masterResume)}\n\nJob Description:\n${jobDescription}\n\nTailor this resume for this job and return the JSON.`,
           },
         ],
       });
@@ -342,8 +353,8 @@ async function tailorResumeAsync(
         title: (profile.masterResume.header?.headline || "Job") as string,
         company: "Company" as string,
       },
-      generated: tailoredDoc,
-      current: tailoredDoc,
+      generated: { resume: tailoredDoc, coverLetter: "" },
+      current: { resume: tailoredDoc, coverLetter: "" },
       analysis: {
         matchScore: 85,
         matchedKeywords: [],
@@ -366,34 +377,31 @@ async function tailorResumeAsync(
   }
 }
 
-function formatResumeText(resume: any): string {
-  const lines: string[] = [];
-  if (resume?.header?.fullName) lines.push(resume.header.fullName);
-  if (resume?.header?.headline)
-    lines.push(resume.header.headline);
-  if (resume?.header?.email) lines.push(resume.header.email);
-  if (resume?.summary) {
-    lines.push("\nSUMMARY");
-    lines.push(resume.summary);
-  }
-  if (resume?.experience?.length) {
-    lines.push("\nEXPERIENCE");
-    for (const exp of resume.experience) {
-      lines.push(`${exp.title}, ${exp.company}`);
-      if (exp.startDate) lines.push(`${exp.startDate} - ${exp.endDate}`);
-      for (const bullet of exp.bullets || []) lines.push(`- ${bullet}`);
-    }
-  }
-  if (resume?.skills?.length) {
-    lines.push("\nSKILLS");
-    for (const skill of resume.skills)
-      lines.push(`${skill.label}: ${skill.items.join(", ")}`);
-  }
-  return lines.join("\n");
-}
-
 function parseTailoredResume(text: string, original: any): any {
-  return original;
+  if (!text || !text.trim()) {
+    return original;
+  }
+
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn("[BATCH_TAILOR] No JSON found in Claude response, using original resume");
+      return original;
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // Basic sanity check - must have at least a header or experience
+    if (!parsed || (!parsed.header && !parsed.experience)) {
+      console.warn("[BATCH_TAILOR] Parsed JSON missing expected fields, using original resume");
+      return original;
+    }
+
+    return parsed;
+  } catch (err) {
+    console.error("[BATCH_TAILOR] Failed to parse tailored resume JSON:", err);
+    return original;
+  }
 }
 
 /**
