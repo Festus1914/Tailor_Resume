@@ -120,6 +120,7 @@ export default function TailorResultsView({
         lines.push(header.fullName.toUpperCase());
       }
       if (header.headline) {
+        lines.push("");
         lines.push(header.headline);
       }
 
@@ -137,49 +138,45 @@ export default function TailorResultsView({
 
       // Professional summary
       if (resume.summary) {
-        lines.push("", "", "PROFESSIONAL SUMMARY", "", resume.summary);
+        lines.push("", "PROFESSIONAL SUMMARY", resume.summary);
       }
 
       // Experience
       if (Array.isArray(resume.experience) && resume.experience.length > 0) {
-        lines.push("", "", "EXPERIENCE", "");
+        lines.push("", "EXPERIENCE");
         resume.experience.forEach((exp: any) => {
           if (exp.title || exp.company) {
-            lines.push(`${exp.title || "Position"} | ${exp.company || "Company"}`);
+            lines.push(`${exp.title || "Position"}, ${exp.company || "Company"}`);
           }
           if (exp.startDate || exp.endDate) {
             const endDate = exp.isCurrent ? "Present" : exp.endDate || "Current";
-            lines.push(`${exp.startDate || "Start"} – ${endDate}`);
+            lines.push(`${exp.startDate || "Start"} - ${endDate}`);
           }
           if (exp.bullets && Array.isArray(exp.bullets)) {
-            lines.push("");
             exp.bullets.forEach((bullet: any) => {
               if (bullet) lines.push(`• ${bullet}`);
             });
           }
-          lines.push("", "");
+          lines.push("");
         });
       }
 
       // Skills
       if (Array.isArray(resume.skills) && resume.skills.length > 0) {
-        lines.push("", "", "SKILLS", "");
-        resume.skills.forEach((group: any, idx: number) => {
+        lines.push("", "SKILLS");
+        resume.skills.forEach((group: any) => {
           const skillsStr = Array.isArray(group.items)
             ? group.items.join(", ")
             : String(group.items || "");
           if (skillsStr) {
             lines.push(`${group.label || "Skills"}: ${skillsStr}`);
-            if (idx < resume.skills.length - 1) {
-              lines.push("");
-            }
           }
         });
       }
 
       // Education
       if (Array.isArray(resume.education) && resume.education.length > 0) {
-        lines.push("", "", "EDUCATION", "");
+        lines.push("", "EDUCATION");
         resume.education.forEach((edu: any) => {
           if (edu.degree && edu.field) {
             lines.push(`${edu.degree} in ${edu.field}`);
@@ -190,7 +187,7 @@ export default function TailorResultsView({
           if (edu.location) {
             lines.push(edu.location);
           }
-          lines.push("", "");
+          lines.push("");
         });
       }
 
@@ -274,18 +271,6 @@ export default function TailorResultsView({
     return tailored.current?.coverLetter || tailored.generated?.coverLetter || "";
   };
 
-  const getCandidateName = (): string => {
-    const resume =
-      tailored.current?.resume || tailored.generated?.resume || tailored.profileSnapshot;
-    return (resume as any)?.header?.fullName || "Resume";
-  };
-
-  const sanitizeForFilename = (input: string): string =>
-    input
-      .replace(/[^a-zA-Z0-9\s-]/g, "")
-      .trim()
-      .replace(/\s+/g, "_") || "Untitled";
-
   async function downloadFile(format: "pdf" | "docx") {
     console.log(`\n[DOWNLOAD] === Starting ${format.toUpperCase()} download ===`);
 
@@ -353,14 +338,10 @@ export default function TailorResultsView({
         throw new Error("Export created empty file. Please try again.");
       }
 
-      const candidateName = sanitizeForFilename(getCandidateName());
-      const companyName = sanitizeForFilename(job.company || "Company");
-      const docType = activeTab === "coverLetter" ? "Cover_Letter" : "Resume";
-
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${candidateName}_${companyName}_${docType}.${format}`;
+      a.download = `tailored-${activeTab === "coverLetter" ? "cover-letter" : "resume"}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
