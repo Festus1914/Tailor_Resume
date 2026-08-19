@@ -90,7 +90,7 @@ export default function BatchDownloadsView({
     const lines: string[] = [];
 
     if (resume?.header?.fullName) {
-      lines.push(resume.header.fullName);
+      lines.push(resume.header.fullName.toUpperCase());
     }
     if (resume?.header?.headline) {
       lines.push(resume.header.headline);
@@ -107,47 +107,56 @@ export default function BatchDownloadsView({
     }
 
     if (resume?.summary) {
-      lines.push("");
-      lines.push("PROFESSIONAL SUMMARY");
+      lines.push("", "", "PROFESSIONAL SUMMARY", "");
       lines.push(resume.summary);
     }
 
     if (resume?.experience?.length) {
-      lines.push("");
-      lines.push("WORK EXPERIENCE");
+      lines.push("", "", "WORK EXPERIENCE", "");
       for (const exp of resume.experience) {
-        lines.push(`${exp.title}, ${exp.company}`);
+        lines.push(`${exp.title || "Position"} | ${exp.company || "Company"}`);
         if (exp.startDate || exp.endDate) {
-          lines.push(`${exp.startDate} - ${exp.endDate || "Present"}`);
+          lines.push(`${exp.startDate || "Start"} – ${exp.endDate || "Present"}`);
         }
         if (exp.bullets?.length) {
+          lines.push("");
           for (const bullet of exp.bullets) {
             lines.push(`• ${bullet}`);
           }
         }
+        lines.push("", "");
       }
     }
 
     if (resume?.skills?.length) {
-      lines.push("");
-      lines.push("SKILLS");
-      for (const group of resume.skills) {
+      lines.push("", "", "SKILLS", "");
+      for (let i = 0; i < resume.skills.length; i++) {
+        const group = resume.skills[i];
         const items = Array.isArray(group.items)
           ? group.items.join(", ")
           : String(group.items ?? "");
-        lines.push(`${group.label}`);
-        if (items) lines.push(items);
+        lines.push(`${group.label || "Skills"}: ${items}`);
+        if (i < resume.skills.length - 1) {
+          lines.push("");
+        }
       }
     }
 
     if (resume?.education?.length) {
-      lines.push("");
-      lines.push("EDUCATION");
+      lines.push("", "", "EDUCATION", "");
       for (const edu of resume.education) {
-        lines.push(`${edu.degree}, ${edu.school}`);
-        if (edu.startDate || edu.endDate) {
-          lines.push(`${edu.startDate} - ${edu.endDate}`);
+        if (edu.degree && edu.field) {
+          lines.push(`${edu.degree} in ${edu.field}`);
+        } else if (edu.degree) {
+          lines.push(edu.degree);
         }
+        if (edu.school) {
+          lines.push(edu.school);
+        }
+        if (edu.location) {
+          lines.push(edu.location);
+        }
+        lines.push("", "");
       }
     }
 

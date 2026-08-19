@@ -137,45 +137,49 @@ export default function TailorResultsView({
 
       // Professional summary
       if (resume.summary) {
-        lines.push("", "PROFESSIONAL SUMMARY", resume.summary);
+        lines.push("", "", "PROFESSIONAL SUMMARY", "", resume.summary);
       }
 
       // Experience
       if (Array.isArray(resume.experience) && resume.experience.length > 0) {
-        lines.push("", "EXPERIENCE");
+        lines.push("", "", "EXPERIENCE", "");
         resume.experience.forEach((exp: any) => {
           if (exp.title || exp.company) {
-            lines.push(`${exp.title || "Position"}, ${exp.company || "Company"}`);
+            lines.push(`${exp.title || "Position"} | ${exp.company || "Company"}`);
           }
           if (exp.startDate || exp.endDate) {
             const endDate = exp.isCurrent ? "Present" : exp.endDate || "Current";
-            lines.push(`${exp.startDate || "Start"} - ${endDate}`);
+            lines.push(`${exp.startDate || "Start"} – ${endDate}`);
           }
           if (exp.bullets && Array.isArray(exp.bullets)) {
+            lines.push("");
             exp.bullets.forEach((bullet: any) => {
               if (bullet) lines.push(`• ${bullet}`);
             });
           }
-          lines.push("");
+          lines.push("", "");
         });
       }
 
       // Skills
       if (Array.isArray(resume.skills) && resume.skills.length > 0) {
-        lines.push("", "SKILLS");
-        resume.skills.forEach((group: any) => {
+        lines.push("", "", "SKILLS", "");
+        resume.skills.forEach((group: any, idx: number) => {
           const skillsStr = Array.isArray(group.items)
             ? group.items.join(", ")
             : String(group.items || "");
           if (skillsStr) {
             lines.push(`${group.label || "Skills"}: ${skillsStr}`);
+            if (idx < resume.skills.length - 1) {
+              lines.push("");
+            }
           }
         });
       }
 
       // Education
       if (Array.isArray(resume.education) && resume.education.length > 0) {
-        lines.push("", "EDUCATION");
+        lines.push("", "", "EDUCATION", "");
         resume.education.forEach((edu: any) => {
           if (edu.degree && edu.field) {
             lines.push(`${edu.degree} in ${edu.field}`);
@@ -186,7 +190,7 @@ export default function TailorResultsView({
           if (edu.location) {
             lines.push(edu.location);
           }
-          lines.push("");
+          lines.push("", "");
         });
       }
 
