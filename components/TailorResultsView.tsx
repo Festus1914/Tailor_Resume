@@ -270,6 +270,18 @@ export default function TailorResultsView({
     return tailored.current?.coverLetter || tailored.generated?.coverLetter || "";
   };
 
+  const getCandidateName = (): string => {
+    const resume =
+      tailored.current?.resume || tailored.generated?.resume || tailored.profileSnapshot;
+    return (resume as any)?.header?.fullName || "Resume";
+  };
+
+  const sanitizeForFilename = (input: string): string =>
+    input
+      .replace(/[^a-zA-Z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "_") || "Untitled";
+
   async function downloadFile(format: "pdf" | "docx") {
     console.log(`\n[DOWNLOAD] === Starting ${format.toUpperCase()} download ===`);
 
@@ -337,10 +349,14 @@ export default function TailorResultsView({
         throw new Error("Export created empty file. Please try again.");
       }
 
+      const candidateName = sanitizeForFilename(getCandidateName());
+      const companyName = sanitizeForFilename(job.company || "Company");
+      const docType = activeTab === "coverLetter" ? "Cover_Letter" : "Resume";
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `tailored-${activeTab === "coverLetter" ? "cover-letter" : "resume"}.${format}`;
+      a.download = `${candidateName}_${companyName}_${docType}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();

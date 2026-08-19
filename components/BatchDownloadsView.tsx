@@ -23,6 +23,12 @@ export default function BatchDownloadsView({
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadingZip, setDownloadingZip] = useState(false);
 
+  const sanitizeForFilename = (input: string): string =>
+    input
+      .replace(/[^a-zA-Z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "_") || "Untitled";
+
   const handleDownload = async (resumeId: string, format: "pdf" | "docx") => {
     setDownloading(`${resumeId}-${format}`);
     try {
@@ -42,7 +48,10 @@ export default function BatchDownloadsView({
       if (!resumeText.trim()) {
         throw new Error("Resume content is empty. Open the resume, re-save it, and try again.");
       }
-      const filename = `resume-${resumeId.slice(0, 8)}`;
+
+      const candidateName = sanitizeForFilename(resumeContent?.header?.fullName || "Resume");
+      const companyName = sanitizeForFilename(resumeData.resume?.job?.company || "Company");
+      const filename = `${candidateName}_${companyName}_Resume`;
 
       // POST to export endpoint
       const exportEndpoint = format === "pdf" ? "/api/export/pdf" : "/api/export/docx";

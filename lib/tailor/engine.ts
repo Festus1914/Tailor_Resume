@@ -145,7 +145,7 @@ export async function tailorResume(
   const resumeText = formatResumeForPrompt(masterResume);
   const jobText = formatJobForPrompt(job);
 
-  const systemPrompt = `You are an expert resume writer and recruiter. Your task is to tailor a resume for a specific job posting while maintaining accuracy and honesty.
+  const systemPrompt = `You are an expert resume writer, professional recruiter, and ATS (Applicant Tracking System) optimization specialist. Your task is to deeply tailor a resume for a specific job posting while maintaining complete accuracy and honesty.
 
 IMPORTANT: Generate your response in valid JSON format with this exact structure:
 {
@@ -167,13 +167,29 @@ IMPORTANT: Generate your response in valid JSON format with this exact structure
   }
 }
 
-Guidelines for tailoring:
-1. Reorder experience by relevance to the job, not chronological order
-2. Emphasize skills and achievements that match the job description
-3. Use keywords from the job posting naturally in the resume
-4. Keep the same structure but update summaries and bullets to match the role
-5. Remove or de-emphasize less relevant experience
-6. Maintain complete accuracy - never fabricate experience`;
+Guidelines for tailoring the resume — do this thoroughly, not superficially:
+1. Read the job description closely and identify the top hard skills, soft skills, tools, and qualifications the employer cares about most.
+2. Rewrite the professional summary/headline so it speaks directly to this role — mention the target job title or field and the strongest 2-3 matching qualifications up front.
+3. Reorder experience entries by relevance to this job, not strictly by chronology.
+4. Rewrite experience bullets (don't just copy them) to:
+   - Lead with strong action verbs (e.g., "Led", "Built", "Reduced", "Automated")
+   - Quantify impact wherever the original resume provides or implies numbers (%, $, time saved, team size, scale)
+   - Naturally incorporate exact keywords/phrases from the job posting where truthfully applicable (helps with ATS keyword matching)
+   - Stay concise — one line per bullet, no fluff
+5. Reorder and relabel the skills section so the most job-relevant skills appear first; group them logically (e.g., "Languages", "Frameworks", "Tools").
+6. De-emphasize (but don't necessarily delete) experience/skills that are irrelevant to this role.
+7. Never fabricate employers, titles, dates, skills, or achievements that aren't grounded in the master resume — you may rephrase and re-emphasize, but the underlying facts must stay accurate.
+8. matchScore should be a realistic, honest 0-100 assessment of how well the CANDIDATE'S ACTUAL background (not the rewritten wording) matches the job's core requirements.
+9. matchedKeywords/missingKeywords should reflect real overlap (or gaps) between the resume and the job posting's key requirements.
+10. summaryOfChanges should be a short bullet list (3-6 items) describing what you changed and why, e.g., "Reordered experience to lead with cloud infrastructure work matching the DevOps focus of this role."
+
+Guidelines for the cover letter:
+1. 3-4 short paragraphs, roughly 250-350 words total.
+2. Open with genuine enthusiasm tied to the specific role and company (not generic).
+3. Reference 2-3 concrete, real accomplishments from the resume that map directly to what the job posting asks for.
+4. Match the tone to the seniority and industry implied by the job posting (e.g., more technical for engineering roles, more narrative for design/creative roles).
+5. Close with a confident, specific call to action.
+6. Never invent facts not present in the master resume.`;
 
   const userPrompt = `Here is the master resume:
 
@@ -187,11 +203,11 @@ ${jobText}
 
 ---
 
-Please tailor the resume to this job posting and generate a professional cover letter. Return the response as valid JSON following the structure specified in the system prompt.`;
+Tailor this resume for the job posting above and write a matching cover letter, following every guideline in the system prompt precisely. Return the response as valid JSON following the exact structure specified in the system prompt — no markdown, no commentary, JSON only.`;
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 4000,
+    max_tokens: 8000,
     system: systemPrompt,
     messages: [
       {

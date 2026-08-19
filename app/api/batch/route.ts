@@ -301,8 +301,13 @@ async function tailorResumeAsync(
     try {
       const response = await client.messages.create({
         model: MODEL,
-        max_tokens: 2000,
-        system: `You are an expert resume writer. Tailor the resume to match the job description by emphasizing relevant skills and experience, reordering content, and adjusting wording — without inventing new facts.
+        max_tokens: 6000,
+        system: `You are an expert resume writer, professional recruiter, and ATS optimization specialist. Tailor the resume to match the job description thoroughly:
+- Rewrite the summary to speak directly to this role.
+- Reorder experience by relevance to the job, not chronology.
+- Rewrite bullets with strong action verbs, quantified impact where the original supports it, and job-posting keywords used truthfully.
+- Reorder skills so the most relevant ones appear first.
+- Never fabricate employers, titles, dates, or achievements not grounded in the original resume.
 
 Return ONLY valid JSON (no markdown, no explanation) matching this structure:
 {
