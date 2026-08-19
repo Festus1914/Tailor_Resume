@@ -93,7 +93,7 @@ export default function BatchDownloadsView({
       lines.push(resume.header.fullName);
     }
     if (resume?.header?.headline) {
-      lines.push("", resume.header.headline);
+      lines.push("", "", resume.header.headline);
     }
     if (resume?.header?.email || resume?.header?.phone || resume?.header?.location) {
       const contact = [
