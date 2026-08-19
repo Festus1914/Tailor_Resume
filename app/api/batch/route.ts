@@ -324,7 +324,7 @@ async function tailorResumeAsync(
     } catch (error) {
       clearTimeout(timeoutId);
       if (error instanceof Error && error.name === "AbortError") {
-        console.warn("Resume tailoring timeout for job", jobId);
+        console.warn("Resume tailoring timeout for job", job._id);
       } else {
         console.error("Resume tailoring error:", error);
       }
@@ -337,7 +337,7 @@ async function tailorResumeAsync(
     // Create TailoredResume record
     const tailored = await TailoredResume.create({
       userId,
-      jobId,
+      jobId: job._id,
       jobSnapshot: {
         title: (profile.masterResume.header?.headline || "Job") as string,
         company: "Company" as string,
