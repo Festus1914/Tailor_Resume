@@ -118,32 +118,89 @@ export const POST = route(async (req: NextRequest) => {
   );
 });
 
-// Ultra-fast parallel processing: 20 jobs at once
+// Controlled concurrency: process 3 jobs at a time to avoid API rate limits and timeouts
 async function processAllJobsAggressive(
   batchId: any,
   userId: any,
   totalJobs: number
 ): Promise<void> {
+  const CONCURRENCY = 3; // Max 3 concurrent Claude API calls
+  console.log(`[BATCH] Starting batch processing with concurrency=${CONCURRENCY}`);
+
   try {
     let processed = 0;
+    let retryQueue: any[] = [];
 
-    while (processed < totalJobs) {
-      const tasks = await JobTask.find({
-        batchId,
-        status: "queued",
-      })
-        .limit(20)
-        .lean();
+    while (processed < totalJobs || retryQueue.length > 0) {
+      // Get next batch of jobs to process
+      let tasksToProcess = [];
 
-      if (tasks.length === 0) break;
+      if (retryQueue.length > 0) {
+        // Process retries first
+        tasksToProcess = retryQueue.splice(0, CONCURRENCY);
+        console.log(`[BATCH] Processing ${tasksToProcess.length} retries`);
+      } else {
+        // Get new queued tasks
+        const newTasks = await JobTask.find({
+          batchId,
+          status: "queued",
+        })
+          .limit(CONCURRENCY)
+          .lean();
 
-      // Process 20 jobs in parallel (no waiting)
-      await Promise.allSettled(tasks.map((t) => fastProcessJob(t, userId)));
+        tasksToProcess = newTasks;
+        if (tasksToProcess.length > 0) {
+          processed += tasksToProcess.length;
+          console.log(`[BATCH] Processing ${tasksToProcess.length} new tasks (${processed}/${totalJobs})`);
+        }
+      }
 
-      processed += tasks.length;
+      if (tasksToProcess.length === 0) {
+        // Check if there are any still-processing tasks
+        const inProgress = await JobTask.countDocuments({
+          batchId,
+          status: { $in: ["fetching", "extracting", "tailoring"] },
+        });
+
+        if (inProgress === 0) {
+          console.log(`[BATCH] All jobs processed (${processed}/${totalJobs})`);
+          break;
+        }
+
+        // Wait before checking again
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        continue;
+      }
+
+      // Process tasks with controlled concurrency
+      const results = await Promise.allSettled(
+        tasksToProcess.map((t) => fastProcessJob(t, userId))
+      );
+
+      // Track failures for retry
+      results.forEach((result, idx) => {
+        if (result.status === "rejected") {
+          const task = tasksToProcess[idx];
+          const attempts = (task.attempts || 0) + 1;
+
+          if (attempts < 2) {
+            console.log(`[BATCH] Task ${task._id} failed, queuing for retry (attempt ${attempts}/2)`);
+            retryQueue.push({ ...task, attempts });
+          } else {
+            console.log(`[BATCH] Task ${task._id} failed after 2 attempts, giving up`);
+          }
+        }
+      });
+
+      // Small delay between batches to avoid rate limiting
+      if (tasksToProcess.length > 0 && processed < totalJobs) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
+
+    console.log(`[BATCH] Batch ${batchId} processing complete`);
   } catch (err) {
-    console.error("Aggressive batch processing error:", err);
+    console.error("[BATCH] Batch processing error:", err);
   }
 }
 
@@ -247,24 +304,36 @@ async function fastProcessJob(task: any, userId: any): Promise<void> {
       return;
     }
 
+    // Mark as tailoring (in progress) - will be updated to succeeded when resume is created
+    await JobTask.updateOne(
+      { _id: taskId },
+      {
+        status: "tailoring",
+        jobId: job._id,
+      }
+    ).catch(() => null);
+
     // Tailor resume with Claude (async, don't wait for completion)
+    // tailorResumeAsync will mark the task as succeeded or failed
     const resumePromise = tailorResumeAsync(
       taskId,
       userId,
       job,
       profile,
       description
-    ).catch(() => null);
-
-    // Mark as succeeded immediately - resume will be created in background
-    await JobTask.updateOne(
-      { _id: taskId },
-      {
-        status: "succeeded",
-        jobId: job._id,
-        finishedAt: new Date(),
-      }
-    ).catch(() => null);
+    ).catch((err) => {
+      console.error(`[TAILOR_ASYNC] Error tailoring resume for job ${job._id}:`, err);
+      // Mark as failed if tailoring crashes
+      JobTask.updateOne(
+        { _id: taskId },
+        {
+          status: "failed",
+          failureReason: "tailor_error",
+          lastError: err instanceof Error ? err.message : "Unknown error",
+          finishedAt: new Date(),
+        }
+      ).catch(() => null);
+    });
 
     // Don't await - let it process in background
     void resumePromise;
@@ -292,10 +361,10 @@ async function tailorResumeAsync(
   try {
     const masterResume = profile.masterResume;
 
-    // Call Claude to tailor (with timeout)
+    // Call Claude to tailor (with 30-second timeout for JSON generation)
     const client = getAnthropicClient();
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     let tailoredText = "";
     try {
@@ -351,34 +420,62 @@ Keep all fields present in the master resume; only reorder/reword content to fit
     const tailoredDoc = parseTailoredResume(tailoredText, masterResume);
 
     // Create TailoredResume record
-    const tailored = await TailoredResume.create({
-      userId,
-      jobId: job._id,
-      jobSnapshot: {
-        title: (profile.masterResume.header?.headline || "Job") as string,
-        company: "Company" as string,
-      },
-      generated: { resume: tailoredDoc, coverLetter: "" },
-      current: { resume: tailoredDoc, coverLetter: "" },
-      analysis: {
-        matchScore: 85,
-        matchedKeywords: [],
-        missingKeywords: [],
-      },
-      model: MODEL,
-      isEdited: false,
-    }).catch(() => null);
+    try {
+      const tailored = await TailoredResume.create({
+        userId,
+        jobId: job._id,
+        jobSnapshot: {
+          title: job.title || "Position",
+          company: job.company || "Company",
+        },
+        profileSnapshot: masterResume,
+        generated: { resume: tailoredDoc, coverLetter: "" },
+        current: { resume: tailoredDoc, coverLetter: "" },
+        analysis: {
+          matchScore: 85,
+          matchedKeywords: [],
+          missingKeywords: [],
+        },
+        model: MODEL,
+        isEdited: false,
+      });
 
-    // Update task with resume ID
-    if (tailored) {
+      // Mark task as succeeded ONLY after resume is created
       await JobTask.updateOne(
         { _id: taskId },
-        { resumeId: tailored._id }
+        {
+          status: "succeeded",
+          resumeId: tailored._id,
+          finishedAt: new Date(),
+        }
+      ).catch(() => null);
+
+      console.log(`[TAILOR_ASYNC] Resume created successfully for job ${job._id}`);
+    } catch (err) {
+      console.error(`[TAILOR_ASYNC] Failed to create resume for job ${job._id}:`, err);
+      // Mark task as failed if resume creation fails
+      await JobTask.updateOne(
+        { _id: taskId },
+        {
+          status: "failed",
+          failureReason: "resume_creation_failed",
+          lastError: err instanceof Error ? err.message : "Failed to create resume",
+          finishedAt: new Date(),
+        }
       ).catch(() => null);
     }
   } catch (err) {
-    // Silent fail - resume generation optional
-    console.error("Resume tailor error:", err);
+    console.error("[TAILOR_ASYNC] Unexpected error:", err);
+    // Mark as failed
+    await JobTask.updateOne(
+      { _id: taskId },
+      {
+        status: "failed",
+        failureReason: "unknown",
+        lastError: err instanceof Error ? err.message : "Unknown error",
+        finishedAt: new Date(),
+      }
+    ).catch(() => null);
   }
 }
 
