@@ -350,6 +350,38 @@ async function fastProcessJob(task: any, userId: any): Promise<void> {
   }
 }
 
+// Check if all tasks in a batch are complete, and if so, mark batch as completed
+async function checkAndCompleteBatch(userId: any, jobId: any): Promise<void> {
+  try {
+    // Find the batch this job belongs to (via its task)
+    const task = await JobTask.findOne({ jobId }).select("batchId");
+    if (!task || !task.batchId) return;
+
+    const batchId = task.batchId;
+
+    // Count tasks that are still processing
+    const inProgress = await JobTask.countDocuments({
+      batchId,
+      status: { $in: ["queued", "fetching", "extracting", "tailoring"] },
+    });
+
+    // If no tasks are in progress, mark batch as completed
+    if (inProgress === 0) {
+      await Batch.updateOne(
+        { _id: batchId, userId },
+        {
+          status: "completed",
+          completedAt: new Date(),
+        }
+      ).catch(() => null);
+
+      console.log(`[BATCH] Batch ${batchId} completed`);
+    }
+  } catch (err) {
+    console.error("[BATCH] Error checking batch completion:", err);
+  }
+}
+
 // Background resume tailoring - returns immediately
 async function tailorResumeAsync(
   taskId: any,
@@ -451,6 +483,9 @@ Keep all fields present in the master resume; only reorder/reword content to fit
       ).catch(() => null);
 
       console.log(`[TAILOR_ASYNC] Resume created successfully for job ${job._id}`);
+
+      // Check if batch is complete
+      await checkAndCompleteBatch(job.userId, job._id);
     } catch (err) {
       console.error(`[TAILOR_ASYNC] Failed to create resume for job ${job._id}:`, err);
       // Mark task as failed if resume creation fails
@@ -463,6 +498,8 @@ Keep all fields present in the master resume; only reorder/reword content to fit
           finishedAt: new Date(),
         }
       ).catch(() => null);
+
+      await checkAndCompleteBatch(job.userId, job._id);
     }
   } catch (err) {
     console.error("[TAILOR_ASYNC] Unexpected error:", err);
@@ -476,6 +513,8 @@ Keep all fields present in the master resume; only reorder/reword content to fit
         finishedAt: new Date(),
       }
     ).catch(() => null);
+
+    await checkAndCompleteBatch(job.userId, job._id);
   }
 }
 
