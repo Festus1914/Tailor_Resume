@@ -76,7 +76,7 @@ IMPORTANT:
 - Return valid JSON only`;
 
 /**
- * Extract text from uploaded resume file (PDF, DOCX, or TXT)
+ * Extract text from uploaded resume file (PDF, DOCX, or TXT) using Claude
  */
 async function extractTextFromFile(file: File): Promise<string> {
   console.log("[EXTRACT] Starting extraction for file:", { name: file.name, type: file.type });
@@ -96,29 +96,47 @@ async function extractTextFromFile(file: File): Promise<string> {
       file.type === "application/pdf" ||
       file.name.toLowerCase().endsWith(".pdf")
     ) {
-      // PDF file
-      console.log("[EXTRACT] Processing as PDF file");
+      // PDF file - use Claude to extract text
+      console.log("[EXTRACT] Processing as PDF file with Claude");
       try {
-        // @ts-ignore - dynamic require
-        const pdfParse = require("pdf-parse");
-        console.log("[EXTRACT] pdf-parse loaded successfully");
+        const base64Data = Buffer.from(buffer).toString("base64");
+        const client = getAnthropicClient();
 
-        const pdf = await pdfParse(buffer);
-        console.log("[EXTRACT] PDF loaded, pages:", pdf.numpages);
+        const response = await client.messages.create({
+          model: MODEL,
+          max_tokens: 4000,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "document",
+                  source: {
+                    type: "base64",
+                    media_type: "application/pdf",
+                    data: base64Data,
+                  },
+                },
+                {
+                  type: "text",
+                  text: "Extract all text content from this resume/CV. Return ONLY the extracted text, nothing else.",
+                },
+              ],
+            },
+          ],
+        });
 
-        const text = pdf.text?.trim() || "";
-        console.log("[EXTRACT] PDF text extracted, length:", text.length);
+        const extractedText = response.content
+          .filter((c) => c.type === "text")
+          .map((c) => (c.type === "text" ? c.text : ""))
+          .join("");
 
-        if (!text || text.length === 0) {
-          throw new Error("PDF contains no extractable text");
-        }
-
-        return text;
+        console.log("[EXTRACT] PDF text extracted via Claude, length:", extractedText.length);
+        return extractedText.trim();
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : String(e);
-        console.error("[EXTRACT] PDF parsing error:", errorMsg);
-        console.error("[EXTRACT] Full error object:", e);
-        throw new Error(`Failed to parse PDF: ${errorMsg}`);
+        console.error("[EXTRACT] Claude PDF extraction error:", errorMsg);
+        throw new Error(`Failed to extract PDF content: ${errorMsg}`);
       }
     } else if (
       file.type ===
