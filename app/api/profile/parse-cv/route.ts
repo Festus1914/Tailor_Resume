@@ -106,12 +106,19 @@ async function extractTextFromFile(file: File): Promise<string> {
         const pdf = await pdfParse(buffer);
         console.log("[EXTRACT] PDF loaded, pages:", pdf.numpages);
 
-        const text = pdf.text.trim();
+        const text = pdf.text?.trim() || "";
         console.log("[EXTRACT] PDF text extracted, length:", text.length);
+
+        if (!text || text.length === 0) {
+          throw new Error("PDF contains no extractable text");
+        }
+
         return text;
       } catch (e) {
-        console.error("[EXTRACT] PDF parsing error:", e);
-        throw new Error(`Failed to parse PDF: ${e instanceof Error ? e.message : "Unknown error"}`);
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        console.error("[EXTRACT] PDF parsing error:", errorMsg);
+        console.error("[EXTRACT] Full error object:", e);
+        throw new Error(`Failed to parse PDF: ${errorMsg}`);
       }
     } else if (
       file.type ===
